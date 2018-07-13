@@ -74,8 +74,8 @@ def main():
         trg_vocab.load(model_dir + 'trg_vocab.normal.pkl')
         trg_vocab.set_reverse_vocab()
 
-        sos = np.array([src_vocab.vocab['<s>']], dtype=np.int32)
-        eos = np.array([src_vocab.vocab['</s>']], dtype=np.int32)
+        sos = convert.convert_list(np.array([src_vocab.vocab['<s>']], dtype=np.int32), gpu_id)
+        eos = convert.convert_list(np.array([src_vocab.vocab['</s>']], dtype=np.int32), gpu_id)
 
     elif vocab_type == 'subword':
         src_vocab = dataset.VocabSubword()
@@ -83,15 +83,15 @@ def main():
         trg_vocab = dataset.VocabSubword()
         trg_vocab.load(model_dir + 'trg_vocab.sub.model')
 
-        sos = np.array([src_vocab.vocab.PieceToId('<s>')], dtype=np.int32)
-        eos = np.array([src_vocab.vocab.PieceToId('</s>')], dtype=np.int32)
+        sos = convert.convert_list(np.array([src_vocab.vocab.PieceToId('<s>')], dtype=np.int32), gpu_id)
+        eos = convert.convert_list(np.array([src_vocab.vocab.PieceToId('</s>')], dtype=np.int32), gpu_id)
 
     src_vocab_size = len(src_vocab.vocab)
     trg_vocab_size = len(trg_vocab.vocab)
     logger.info('src_vocab size: {}, trg_vocab size: {}'.format(src_vocab_size, trg_vocab_size))
 
     evaluater = evaluate.Evaluate(correct_txt_file)
-    test_iter = dataset.Iterator(test_src_file, test_src_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False, include_label=False)
+    test_iter = dataset.Iterator(test_src_file, test_src_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False)
     """MODEL"""
     model = Multi(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, coefficient)
     chainer.serializers.load_npz(model_file, model)
@@ -105,15 +105,17 @@ def main():
     labels = []
     for i, batch in enumerate(test_iter.generate(), start=1):
         batch = convert.convert(batch, gpu_id)
-        output, label = model.predict(batch[0], sos, eos)
+        with chainer.no_backprop_mode(), chainer.using_config('train', False):
+            output, label = model.predict(batch[0], sos, eos)
         for o, l in zip(output, label):
+            o = chainer.cuda.to_cpu(o)
             outputs.append(trg_vocab.id2word(o))
             labels.append(l)
     rank_list = evaluater.rank(labels)
-    single = evaluater.single(rank_list)
-    multiple = evaluater.multiple(rank_list)
-    logger.info('single: {} | {}'.format(single[0], single[1]))
-    logger.info('multi : {} | {}'.format(multiple[0], multiple[1]))
+    s_rate, s_count = evaluater.single(rank_list)
+    m_rate, m_count = evaluater.multiple(rank_list)
+    logger.info('s: {} | {}'.format(' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
+    logger.info('m: {} | {}'.format(' '.join(x for x in m_rate), ' '.join(x for x in m_count)))
 
     with open(model_file + '.hypo', 'w')as f:
         [f.write(o + '\n') for o in outputs]

@@ -157,7 +157,6 @@ def main():
                     for bb in b:
                         logger.info(src_vocab.id2word(bb))
         chainer.serializers.save_npz(model_dir + 'model_epoch_{}.npz'.format(epoch), model)
-        # chainer.serializers.save_npz(model_dir + 'optimizer_epoch{0}.npz'.format(epoch), optimizer)
 
         """EVALUATE"""
         valid_loss = 0
