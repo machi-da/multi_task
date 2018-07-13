@@ -26,6 +26,7 @@ def load_with_label(file_name):
         sentences = sentences.split('|||')
         l_index = [int(l)-1 for l in label.split(',')]
         label = np.array([1 if i in l_index else 0 for i in range(len(sentences))], dtype=np.int32)
+        # label = np.array([1 if i in l_index else 0 for i in range(len(sentences))], dtype=np.float32)
         label_lit.append(label)
 
         for sentence in sentences:

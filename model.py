@@ -136,8 +136,11 @@ class Multi(chainer.Chain):
         loss_word = self.lossfun(concat_word_ys, concat_word_ys_out) / len(sources)
 
         concat_label_proj = F.concat(label_proj, axis=0)
+        # concat_label_proj = F.concat(F.concat(label_proj, axis=0), axis=0)
         concat_label_gold = F.concat(label_gold, axis=0)
         loss_label = self.lossfun(concat_label_proj, concat_label_gold) / len(sources)
+        # loss_label = F.mean_squared_error(concat_label_proj, concat_label_gold)
+
         # print(coe * loss_word, (1-coe) * loss_label)
         loss = coe * loss_word + (1-coe) * loss_label
 
@@ -163,7 +166,7 @@ class Multi(chainer.Chain):
 
         return sent_hy, sent_cy, sent_vectors
 
-    def predict(self, sources, sos, eos, limit=50):
+    def predict(self, sources, sos, eos, limit=100):
         hs, cs, enc_ys = self.encode(sources)
         label_proj = self.labelClassifier(enc_ys, hs)
 
