@@ -26,7 +26,24 @@ def load_with_label(file_name):
         sentences = sentences.split('|||')
         l_index = [int(l)-1 for l in label.split(',')]
         label = np.array([1 if i in l_index else 0 for i in range(len(sentences))], dtype=np.int32)
-        # label = np.array([1 if i in l_index else 0 for i in range(len(sentences))], dtype=np.float32)
+        label_lit.append(label)
+
+        for sentence in sentences:
+            t.append(sentence.split(' '))
+        text.append(t)
+    return label_lit, text
+
+
+def load_with_label_reg(file_name):
+    label_lit = []
+    text = []
+    with open(file_name)as f:
+        data = f.readlines()
+    for d in data:
+        t = []
+        label, sentences = d.strip().split('\t')
+        sentences = sentences.split('|||')
+        label = np.array([float(l) for l in label.split(',')], dtype=np.float32)
         label_lit.append(label)
 
         for sentence in sentences:
@@ -161,8 +178,11 @@ class VocabSubword:
 
 
 class Iterator:
-    def __init__(self, src_file, trg_file, src_vocab, trg_vocab, batch_size, sort=True, shuffle=True):
-        self.label, self.src = load_with_label(src_file)
+    def __init__(self, src_file, trg_file, src_vocab, trg_vocab, batch_size, sort=True, shuffle=True, reg=False):
+        if reg:
+            self.label, self.src = load_with_label_reg(src_file)
+        else:
+            self.label, self.src = load_with_label(src_file)
         self.trg = load(trg_file)
 
         self.src_vocab = src_vocab

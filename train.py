@@ -11,6 +11,7 @@ import convert
 import dataset
 import evaluate
 from model import Multi
+from model_reg import MultiReg
 
 # os.environ["CHAINER_TYPE_CHECK"] = "0"
 import chainer
@@ -23,6 +24,7 @@ def parse_args():
     parser.add_argument('--epoch', '-e', type=int, default=20)
     parser.add_argument('--interval', '-i', type=int, default=10000)
     parser.add_argument('--gpu', '-g', type=int, default=-1)
+    parser.add_argument('--type', '-t', choices=['normal', 'reg'], default='normal')
     args = parser.parse_args()
     return args
 
@@ -68,6 +70,7 @@ def main():
     n_epoch = args.epoch
     batch_size = args.batch
     interval = args.interval
+    reg =  False if args.type == 'normal' else True
     """DATASET"""
     train_src_file = config['Dataset']['train_src_file']
     train_trg_file = config['Dataset']['train_trg_file']
@@ -117,13 +120,17 @@ def main():
 
     # class_size = 1
 
-    train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, sort=True, shuffle=True)
-    # train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False)
-    valid_iter = dataset.Iterator(valid_src_file, valid_trg_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False)
+    # train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, sort=True, shuffle=True, reg=reg)
+    train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False, reg=reg)
+    valid_iter = dataset.Iterator(valid_src_file, valid_trg_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False, reg=reg)
     evaluater = evaluate.Evaluate(correct_txt_file)
     test_iter = dataset.Iterator(test_src_file, test_src_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False)
     """MODEL"""
-    model = Multi(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, coefficient)
+    if reg:
+        class_size = 1
+        model = MultiReg(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, coefficient)
+    else:
+        model = Multi(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, coefficient)
     """OPTIMIZER"""
     optimizer = chainer.optimizers.Adam()
     optimizer.setup(model)
