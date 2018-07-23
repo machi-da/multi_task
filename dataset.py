@@ -70,9 +70,10 @@ def save_pickle(file_name, data):
 
 
 class VocabNormal:
-    def __init__(self):
+    def __init__(self, reg=False):
         self.vocab = None
         self.reverse_vocab = None
+        self.reg = reg
 
     def build(self, file_name, include_label, initial_vocab, vocab_size, freq=0):
         self.vocab = self._build_vocab(file_name, include_label, initial_vocab, vocab_size, freq)
@@ -83,7 +84,10 @@ class VocabNormal:
         words = []
 
         if with_label:
-            _, documents = load_with_label(file_name)
+            if self.reg:
+                _, documents = load_with_label_reg(file_name)
+            else:
+                _, documents = load_with_label(file_name)
 
             for i, doc in enumerate(documents):
                 for sentence in doc:
@@ -236,25 +240,3 @@ class Iterator:
                 if not batch:
                     continue
                 yield batch
-
-
-if __name__ == '__main__':
-    initial_vocab = {'<unk>': 0, '<s>':1, '</s>': 2}
-
-    src_file = '../quelabel'
-    trg_file = '../anslabel'
-
-    src_vocab = VocabNormal(src_file, True, initial_vocab, 100, 0)
-    # print('src')
-    # print(sorted(src_vocab.vocab.items(), key=lambda x:x[1]))
-    trg_vocab = VocabNormal(trg_file, False, initial_vocab, 100, 0)
-    # print('trg')
-    # print(sorted(src_vocab.vocab.items(), key=lambda x: x[1]))
-
-    iter = Iterator(src_file, trg_file, src_vocab, trg_vocab, 2, sort=False, reverse=False, shuffle=False)
-
-    for i in iter.generate():
-        print('a', len(i))
-        for ii in i:
-            print(ii)
-

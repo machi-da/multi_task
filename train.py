@@ -7,6 +7,8 @@ from logging import getLogger
 import numpy as np
 import traceback
 
+np.set_printoptions(precision=3)
+
 import convert
 import dataset
 import evaluate
@@ -24,7 +26,7 @@ def parse_args():
     parser.add_argument('--epoch', '-e', type=int, default=20)
     parser.add_argument('--interval', '-i', type=int, default=10000)
     parser.add_argument('--gpu', '-g', type=int, default=-1)
-    parser.add_argument('--type', '-t', choices=['normal', 'reg'], default='normal')
+    parser.add_argument('--type', '-t', choices=['l', 'lr', 's', 'sr'], default='l')
     args = parser.parse_args()
     return args
 
@@ -70,27 +72,35 @@ def main():
     n_epoch = args.epoch
     batch_size = args.batch
     interval = args.interval
-    reg =  False if args.type == 'normal' else True
+    reg =  False if args.type == 'l' or args.type == 's' else True
     """DATASET"""
-    train_src_file = config['Dataset']['train_src_file']
-    train_trg_file = config['Dataset']['train_trg_file']
-    valid_src_file = config['Dataset']['valid_src_file']
-    valid_trg_file = config['Dataset']['valid_trg_file']
-    test_src_file = config['Dataset']['test_src_file']
-    correct_txt_file = config['Dataset']['correct_txt_file']
+    if args.type == 'l':
+        section = 'Local'
+    elif args.type == 'lr':
+        section = 'Local_Reg'
+    elif args.type == 's':
+        section = 'Server'
+    else:
+        section = 'Server_Reg'
+    train_src_file = config[section]['train_src_file']
+    train_trg_file = config[section]['train_trg_file']
+    valid_src_file = config[section]['valid_src_file']
+    valid_trg_file = config[section]['valid_trg_file']
+    test_src_file = config[section]['test_src_file']
+    correct_txt_file = config[section]['correct_txt_file']
 
     train_data_size = dataset.data_size(train_src_file)
     valid_data_size = dataset.data_size(valid_src_file)
     logger.info('train size: {0}, valid size: {1}'.format(train_data_size, valid_data_size))
 
     if vocab_type == 'normal':
-        src_vocab = dataset.VocabNormal()
-        trg_vocab = dataset.VocabNormal()
+        src_vocab = dataset.VocabNormal(reg)
+        trg_vocab = dataset.VocabNormal(reg)
         if os.path.isfile(model_dir + 'src_vocab.normal.pkl') and os.path.isfile(model_dir + 'trg_vocab.normal.pkl'):
             src_vocab.load(model_dir + 'src_vocab.normal.pkl')
             trg_vocab.load(model_dir + 'trg_vocab.normal.pkl')
         else:
-            init_vocab = {'<unk>': 0, '<s>': 1, '</s>': 2}
+            init_vocab = {'<pad>': 0, '<unk>': 1, '<s>': 2, '</s>': 3}
             src_vocab.build(train_src_file, True,  init_vocab, vocab_size)
             trg_vocab.build(train_trg_file, False, init_vocab, vocab_size)
             dataset.save_pickle(model_dir + 'src_vocab.normal.pkl', src_vocab.vocab)

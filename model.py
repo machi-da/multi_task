@@ -65,36 +65,38 @@ class WordDecoder(chainer.Chain):
         with self.init_scope():
             self.embed = L.EmbedID(n_vocab, embed)
             self.Nlstm = L.NStepLSTM(n_layers, embed, hidden, dropout)
+            self.W_c = L.Linear(2 * hidden, hidden)
             self.proj = L.Linear(hidden, n_vocab)
-            # self.attention = Attention()
         self.dropout = dropout
 
     def __call__(self, hx, cx, xs, enc_hs):
         xs_embed = [self.embed(x) for x in xs]
         hy, cy, ys = self.Nlstm(hx, cx, xs_embed)
-        ys_proj = [self.proj(F.dropout(y, self.dropout)) for y in ys]
-        return hy, cy, ys_proj
 
-'''
-class Attention(chainer.Chain):
-    def __init__(self):
-        super(Attention, self).__init__()
+        ys_pad = F.pad_sequence(ys, length=None, padding=0.0)
+        enc_hs = F.pad_sequence(enc_hs, length=None, padding=0.0)
 
-    def __call__(self, dec_hs, enc_hs):
-        """
-        dec_hs: (単語数, hidden)
-        enc_hs: (文数, hidden) encodeされた文ベクトル
-        """
+        mask = self.xp.all(enc_hs.data == 0, axis=2, keepdims=True)
+        mask_num = self.xp.full(mask.shape, -1024.0, dtype=self.xp.float32)
+        
+        alignment = []
+        decode = []
 
-        print(dec_hs.shape, len(enc_hs), enc_hs[0].shape)
-        exit()
-        score = F.matmul(dec_hs, enc_hs, False, True)
-        align = F.softmax(score, axis=1)
-        attention = align.data
-        cv = F.matmul(align, enc_hs)
+        ys_pad = F.transpose(ys_pad, (1, 0, 2))
+        for y in ys_pad:
+            y = F.reshape(y, (*y.shape, 1))
+            score = F.matmul(enc_hs, y)
+            score = F.where(mask, mask_num, score)
+            align = F.softmax(score, axis=1)
+            context_vector = F.matmul(enc_hs, align, True, False)
+            t = self.W_c(F.dropout(F.concat((y, context_vector), axis=1), self.dropout))
+            ys_proj = self.proj(F.dropout(t, self.dropout))
+            alignment.append(F.reshape(align, (len(xs), -1)))
+            decode.append(ys_proj)
 
-        return cv, attention
-'''
+        decode = F.stack(decode, axis=1)
+        alignment = F.stack(alignment, axis=1)
+        return hy, cy, decode, alignment.data
 
 
 class LabelClassifier(chainer.Chain):
@@ -128,18 +130,22 @@ class Multi(chainer.Chain):
     def __call__(self, sources, targets_sos, targets_eos, label_gold):
         coe = self.coefficient
         hs, cs, enc_ys = self.encode(sources)
-        word_hy, word_cy, word_ys = self.wordDec(hs, cs, targets_sos, enc_ys)
-        label_proj = self.labelClassifier(enc_ys, hs)
+        word_hs, word_cs, word_ys, alignment = self.wordDec(hs, cs, targets_sos, enc_ys)
+
+        # attn_score = []
+        # for i, x in enumerate(self.xp.sum(alignment, axis=1)):
+        #     attn_score.append(x / len(word_ys[i]))
+        targets_eos = F.pad_sequence(targets_eos, length=None, padding=0)
 
         concat_word_ys = F.concat(word_ys, axis=0)
-        concat_word_ys_out = F.concat(targets_eos, axis=0)
-        loss_word = self.lossfun(concat_word_ys, concat_word_ys_out) / len(sources)
+        concat_word_ys_gold = F.concat(targets_eos, axis=0)
+        
+        loss_word = self.lossfun(concat_word_ys, concat_word_ys_gold, ignore_label=0)
 
+        label_proj = self.labelClassifier(enc_ys, hs)
         concat_label_proj = F.concat(label_proj, axis=0)
-        # concat_label_proj = F.concat(F.concat(label_proj, axis=0), axis=0)
         concat_label_gold = F.concat(label_gold, axis=0)
-        loss_label = self.lossfun(concat_label_proj, concat_label_gold) / len(sources)
-        # loss_label = F.mean_squared_error(concat_label_proj, concat_label_gold)
+        loss_label = self.lossfun(concat_label_proj, concat_label_gold)
 
         # print(coe * loss_word, (1-coe) * loss_label)
         loss = coe * loss_word + (1-coe) * loss_label
@@ -166,28 +172,38 @@ class Multi(chainer.Chain):
 
         return sent_hy, sent_cy, sent_vectors
 
-    def predict(self, sources, sos, eos, limit=100):
+    def predict(self, sources, sos, eos, limit=80):
         hs, cs, enc_ys = self.encode(sources)
         label_proj = self.labelClassifier(enc_ys, hs)
 
-        result = []
-        ys = [sos for _ in range(len(sources))]
-        for i in range(limit):
-            hs, cs, ys = self.wordDec(hs, cs, ys, enc_ys)
-            ys = [self.xp.argmax(y.data, axis=1).astype(self.xp.int32) for y in ys]
-            result.append(ys)
-        result = self.xp.concatenate([self.xp.expand_dims(self.xp.array(x, dtype=self.xp.int32), 0) for x in result]).T
-        result = self.xp.reshape(result, (len(sources), -1))
+        alignments = []
+        sentences = []
+        hs = F.transpose(hs, (1, 0, 2))
+        cs = F.transpose(cs, (1, 0, 2))
+        for h, c, y in zip(hs, cs, enc_ys):
+            h = F.reshape(h, (1, *h.shape))
+            c = F.reshape(c, (1, *c.shape))
+            pre_word = sos
+            sentence = [sos]
+            attn_score = []
+            for i in range(1, limit + 1):
+                h, c, word_ys, alignment = self.wordDec(h, c, [pre_word], [y])
+                word = self.xp.argmax(word_ys[0].data, axis=1)
+                word = word.astype(self.xp.int32)
+                pre_word = word
+                if word == eos:
+                    break
+                attn_score.append(alignment[0][0])
+                sentence.append(word)
+            else:
+                attn_score = self.xp.sum(attn_score, axis=0) / i
+            sentences.append(self.xp.hstack(sentence[1:]))
+            alignments.append(attn_score)
 
-        output = []
         label = []
-        for l in label_proj:
+        for l, a in zip(label_proj, alignments):
             l = F.softmax(l)
-            r = l.data[:, 1]
-            label.append(r)
-        for r in result:
-            index = np.argwhere(r == eos)
-            if len(index) > 0:
-                r = r[:index[0][0]]
-            output.append(r)
-        return output, label
+            l = l.data[:, 1]
+            label.append(l)
+            
+        return sentences, label
