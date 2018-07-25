@@ -67,6 +67,7 @@ def main():
     vocab_type = config['Parameter']['vocab_type']
     vocab_size = int(config['Parameter']['vocab_size'])
     coefficient = float(config['Parameter']['coefficient'])
+    align_weight = float(config['Parameter']['align_weight'])
     """TRINING DETAIL"""
     gpu_id = args.gpu
     n_epoch = args.epoch
@@ -128,10 +129,10 @@ def main():
     trg_vocab_size = len(trg_vocab.vocab)
     logger.info('src_vocab size: {}, trg_vocab size: {}'.format(src_vocab_size, trg_vocab_size))
 
-    train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, sort=True, shuffle=True, reg=reg)
-    # train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False, reg=reg)
+    # train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, sort=True, shuffle=True, reg=reg)
+    train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False, reg=reg)
     valid_iter = dataset.Iterator(valid_src_file, valid_trg_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False, reg=reg)
-    evaluater = evaluate.Evaluate(correct_txt_file)
+    evaluater = evaluate.Evaluate(correct_txt_file, align_weight)
     test_iter = dataset.Iterator(test_src_file, test_src_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False)
     """MODEL"""
     if reg:
@@ -189,15 +190,17 @@ def main():
         """TEST"""
         outputs = []
         labels = []
+        alignments = []
         for i, batch in enumerate(test_iter.generate(), start=1):
             batch = convert.convert(batch, gpu_id)
             with chainer.no_backprop_mode(), chainer.using_config('train', False):
-                output, label = model.predict(batch[0], sos, eos)
-            for o, l in zip(output, label):
+                output, label, align = model.predict(batch[0], sos, eos)
+            for o, l, a in zip(output, label, align):
                 o = chainer.cuda.to_cpu(o)
                 outputs.append(trg_vocab.id2word(o))
                 labels.append(l)
-        rank_list = evaluater.rank(labels)
+                alignments.append(a)
+        rank_list = evaluater.rank(labels, alignments)
         s_rate, s_count = evaluater.single(rank_list)
         m_rate, m_count = evaluater.multiple(rank_list)
         logger.info('E{} ## s: {} | {}'.format(epoch, ' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
@@ -207,6 +210,8 @@ def main():
             [f.write(o + '\n') for o in outputs]
         with open(model_dir + 'model_epoch_{}.attn'.format(epoch), 'w')as f:
             [f.write('{}\n'.format(l)) for l in labels]
+        with open(model_dir + 'model_epoch_{}.align'.format(epoch), 'w')as f:
+            [f.write('{}\n'.format(a)) for a in alignments]
 
         result.append('{},{},{},{}'.format(epoch, valid_loss, s_rate[-1], m_rate[-1]))
 

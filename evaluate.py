@@ -2,14 +2,16 @@ import copy
 
 
 class Evaluate:
-    def __init__(self, correct_txt_file):
+    def __init__(self, correct_txt_file, align_weight=0):
         with open(correct_txt_file, 'r')as f:
             self.correct_data = f.readlines()
+        self.align_weight = align_weight
 
-    def rank(self, attn_list):
+    def rank(self, attn_list, align_list):
         attn_data = copy.deepcopy(attn_list)
         rank_list = []
-        for attn, d in zip(attn_data, self.correct_data):
+        for attn, d, align in zip(attn_data, self.correct_data, align_list):
+            attn = attn + (self.align_weight * align)
             label = [int(num) - 1 for num in d.split('\t')[0].split(',')]
             rank = []
             for _ in range(len(attn)):
