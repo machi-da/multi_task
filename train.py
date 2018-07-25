@@ -128,8 +128,6 @@ def main():
     trg_vocab_size = len(trg_vocab.vocab)
     logger.info('src_vocab size: {}, trg_vocab size: {}'.format(src_vocab_size, trg_vocab_size))
 
-    # class_size = 1
-
     train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, sort=True, shuffle=True, reg=reg)
     # train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False, reg=reg)
     valid_iter = dataset.Iterator(valid_src_file, valid_trg_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False, reg=reg)
@@ -172,9 +170,11 @@ def main():
             except Exception as e:
                 logger.info(traceback.format_exc())
                 logger.info('iteration: {}'.format(i))
-                for b in batch[0]:
-                    for bb in b:
-                        logger.info(src_vocab.id2word(bb))
+                with open(model_dir + 'error_log.txt', 'a')as f:
+                    f.write('iteration_{}\n'.format(i))
+                    for b in batch[0]:
+                        for bb in b:
+                            f.write(src_vocab.id2word(chainer.cuda.to_cpu(bb)) + '\n')
         chainer.serializers.save_npz(model_dir + 'model_epoch_{}.npz'.format(epoch), model)
 
         """EVALUATE"""
