@@ -1,8 +1,9 @@
 import argparse
 import configparser
 import os
-import glob
+import re
 import logging
+import shutil
 from logging import getLogger
 import numpy as np
 import traceback
@@ -21,25 +22,68 @@ import chainer
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('model_dir')
+    parser.add_argument('config_file')
     parser.add_argument('--batch', '-b', type=int, default=32)
     parser.add_argument('--epoch', '-e', type=int, default=20)
     parser.add_argument('--interval', '-i', type=int, default=100000)
     parser.add_argument('--gpu', '-g', type=int, default=-1)
     parser.add_argument('--type', '-t', choices=['l', 'lr', 's', 'sr'], default='l')
+    parser.add_argument('--vocab', '-v', choices=['normal', 'subword'], default='normal')
     args = parser.parse_args()
     return args
 
 
+def model_type(t):
+    if t == 'l':
+        return 'Local'
+    elif t == 'lr':
+        return 'Local_Reg'
+    elif t == 's':
+        return 'Server'
+    else:
+        return 'Server_Reg'
+
+
 def main():
     args = parse_args()
-    model_dir = args.model_dir
-    """LOAD CONFIG FILE"""
-    config_files = glob.glob(os.path.join(model_dir, '*.ini'))
-    assert len(config_files) == 1, 'Put only one config file in the directory'
-    config_file = config_files[0]
     config = configparser.ConfigParser()
+    """ARGS DETAIL"""
+    gpu_id = args.gpu
+    n_epoch = args.epoch
+    batch_size = args.batch
+    interval = args.interval
+    reg = False if args.type == 'l' or args.type == 's' else True
+    vocab_type = args.vocab
+    section = model_type(args.type)
+    config_file = args.config_file
     config.read(config_file)
+
+    """DIR PREPARE"""
+    coefficient = float(config['Parameter']['coefficient'])
+    multi = bool(int(config['Parameter']['multi']))
+    base_dir = config[section]['base_dir']
+    dir_path_last = re.search(r'.*/(.*?)$', base_dir).group(1)
+    if multi:
+        model_dir = './multi_{}_{}_c{}_{}/'.format(vocab_type, args.type, coefficient, dir_path_last)
+    else:
+        model_dir = './nn_{}_{}/'.format(vocab_type, dir_path_last)
+    if not os.path.exists(model_dir):
+        os.mkdir(model_dir)
+    shutil.copyfile(config_file, model_dir + config_file)
+    config_file = model_dir + config_file
+    config.read(config_file)
+
+    """PARAMATER"""
+    embed_size = int(config['Parameter']['embed_size'])
+    hidden_size = int(config['Parameter']['hidden_size'])
+    class_size = int(config['Parameter']['class_size'])
+    dropout_ratio = float(config['Parameter']['dropout'])
+    weight_decay = float(config['Parameter']['weight_decay'])
+    gradclip = float(config['Parameter']['gradclip'])
+    vocab_size = int(config['Parameter']['vocab_size'])
+    coefficient = float(config['Parameter']['coefficient'])
+    align_weight = float(config['Parameter']['align_weight'])
+    multi = bool(int(config['Parameter']['multi']))
     """LOGGER"""
     logger = getLogger(__name__)
     logger.setLevel(logging.INFO)
@@ -57,32 +101,8 @@ def main():
     logger.addHandler(fh)
 
     logger.info('[Training start] logging to {}'.format(log_file))
-    """PARAMATER"""
-    embed_size = int(config['Parameter']['embed_size'])
-    hidden_size = int(config['Parameter']['hidden_size'])
-    class_size = int(config['Parameter']['class_size'])
-    dropout_ratio = float(config['Parameter']['dropout'])
-    weight_decay = float(config['Parameter']['weight_decay'])
-    gradclip = float(config['Parameter']['gradclip'])
-    vocab_type = config['Parameter']['vocab_type']
-    vocab_size = int(config['Parameter']['vocab_size'])
-    coefficient = float(config['Parameter']['coefficient'])
-    align_weight = float(config['Parameter']['align_weight'])
-    """TRINING DETAIL"""
-    gpu_id = args.gpu
-    n_epoch = args.epoch
-    batch_size = args.batch
-    interval = args.interval
-    reg =  False if args.type == 'l' or args.type == 's' else True
+
     """DATASET"""
-    if args.type == 'l':
-        section = 'Local'
-    elif args.type == 'lr':
-        section = 'Local_Reg'
-    elif args.type == 's':
-        section = 'Server'
-    else:
-        section = 'Server_Reg'
     train_src_file = config[section]['train_src_file']
     train_trg_file = config[section]['train_trg_file']
     valid_src_file = config[section]['valid_src_file']
@@ -137,9 +157,9 @@ def main():
     """MODEL"""
     if reg:
         class_size = 1
-        model = MultiReg(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, coefficient)
+        model = MultiReg(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, coefficient, multi=multi)
     else:
-        model = Multi(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, coefficient)
+        model = Multi(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, coefficient, multi=multi)
     """OPTIMIZER"""
     optimizer = chainer.optimizers.Adam()
     optimizer.setup(model)
@@ -203,17 +223,30 @@ def main():
         rank_list = evaluater.rank(labels, alignments)
         s_rate, s_count = evaluater.single(rank_list)
         m_rate, m_count = evaluater.multiple(rank_list)
+        logger.info('E{} ## normal'.format(epoch))
+        logger.info('E{} ## s: {} | {}'.format(epoch, ' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
+        logger.info('E{} ## m: {} | {}'.format(epoch, ' '.join(x for x in m_rate), ' '.join(x for x in m_count)))
+        rank_list = evaluater.rank(labels, alignments, init_flag=True)
+        s_rate_i, s_count = evaluater.single(rank_list)
+        m_rate_i, m_count = evaluater.multiple(rank_list)
+        logger.info('E{} ## normal init'.format(epoch))
+        logger.info('E{} ## s: {} | {}'.format(epoch, ' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
+        logger.info('E{} ## m: {} | {}'.format(epoch, ' '.join(x for x in m_rate), ' '.join(x for x in m_count)))
+        rank_list = evaluater.rank(labels, alignments, init_flag=True, align_flag=True)
+        s_rate_a, s_count = evaluater.single(rank_list)
+        m_rate_a, m_count = evaluater.multiple(rank_list)
+        logger.info('E{} ## normal init align'.format(epoch))
         logger.info('E{} ## s: {} | {}'.format(epoch, ' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
         logger.info('E{} ## m: {} | {}'.format(epoch, ' '.join(x for x in m_rate), ' '.join(x for x in m_count)))
 
         with open(model_dir + 'model_epoch_{}.hypo'.format(epoch), 'w')as f:
             [f.write(o + '\n') for o in outputs]
-        with open(model_dir + 'model_epoch_{}.attn'.format(epoch), 'w')as f:
+        with open(model_dir + 'model_epoch_{}.label'.format(epoch), 'w')as f:
             [f.write('{}\n'.format(l)) for l in labels]
         with open(model_dir + 'model_epoch_{}.align'.format(epoch), 'w')as f:
             [f.write('{}\n'.format(a)) for a in alignments]
 
-        result.append('{},{},{},{}'.format(epoch, valid_loss, s_rate[-1], m_rate[-1]))
+        result.append('{},{},{},{},{},{},{},{}'.format(epoch, valid_loss, s_rate[-1], m_rate[-1], s_rate_i[-1], m_rate_i[-1], s_rate_a[-1], m_rate_a[-1]))
 
     """MODEL SAVE"""
     best_epoch = min(loss_dic, key=(lambda x: loss_dic[x]))
@@ -221,7 +254,7 @@ def main():
     chainer.serializers.save_npz(model_dir + 'best_model.npz', model)
 
     with open(model_dir + 'result.csv', 'w')as f:
-        f.write('epoch,valid_loss,single,multiple\n')
+        f.write('epoch,valid_loss,s,m,s_init,m_init,s_align,m_align\n')
         [f.write(r + '\n') for r in result]
 
 

@@ -1,6 +1,7 @@
 import argparse
 import configparser
 import os
+import re
 import glob
 import logging
 import numpy as np
@@ -22,9 +23,19 @@ def parse_args():
     parser.add_argument('--batch', '-b', type=int, default=32)
     parser.add_argument('--gpu', '-g', type=int, default=-1)
     parser.add_argument('--model', '-m', type=str, required=True)
-    parser.add_argument('--type', '-t', choices=['l', 'lr', 's', 'sr'], default='l')
     args = parser.parse_args()
     return args
+
+
+def model_type(t):
+    if t == 'l':
+        return 'Local'
+    elif t == 'lr':
+        return 'Local_Reg'
+    elif t == 's':
+        return 'Server'
+    else:
+        return 'Server_Reg'
 
 
 def main():
@@ -46,7 +57,7 @@ def main():
     sh.setFormatter(formatter)
     logger.addHandler(sh)
 
-    log_file = model_dir + 'log.txt'
+    log_file = model_dir + 'test_log.txt'
     fh = logging.FileHandler(log_file)
     fh.setLevel(logging.INFO)
     fh.setFormatter(formatter)
@@ -58,23 +69,21 @@ def main():
     hidden_size = int(config['Parameter']['hidden_size'])
     class_size = int(config['Parameter']['class_size'])
     dropout_ratio = float(config['Parameter']['dropout'])
-    vocab_type = config['Parameter']['vocab_type']
     coefficient = float(config['Parameter']['coefficient'])
     align_weight = float(config['Parameter']['align_weight'])
+    multi = bool(int(config['Parameter']['multi']))
     """TEST DETAIL"""
     gpu_id = args.gpu
     batch_size = args.batch
-    model_file = args.model
-    reg = False if args.type == 'l' or args.type == 's' else True
-    """DATASET"""
-    if args.type == 'l':
-        section = 'Local'
-    elif args.type == 'lr':
-        section = 'Local_Reg'
-    elif args.type == 's':
-        section = 'Server'
+    model_file = model_dir + 'model_epoch_{}.npz'.format(args.model)
+    data_type = model_dir.split('_')[2]
+    reg = False if data_type == 'l' or data_type == 's' else True
+    if 'normal' in model_dir:
+        vocab_type = 'normal'
     else:
-        section = 'Server_Reg'
+        vocab_type = 'subword'
+    """DATASET"""
+    section = model_type(data_type)
     test_src_file = config[section]['test_src_file']
     correct_txt_file = config[section]['correct_txt_file']
 
@@ -109,9 +118,9 @@ def main():
     """MODEL"""
     if reg:
         class_size = 1
-        model = MultiReg(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, coefficient)
+        model = MultiReg(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, coefficient, multi=multi)
     else:
-        model = Multi(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, coefficient)
+        model = Multi(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, coefficient, multi=multi)
     chainer.serializers.load_npz(model_file, model)
     """GPU"""
     if gpu_id >= 0:
@@ -119,7 +128,7 @@ def main():
         chainer.cuda.get_device_from_id(gpu_id).use()
         model.to_gpu()
     """TEST"""
-    """TEST"""
+    epoch = 'T'
     outputs = []
     labels = []
     alignments = []
@@ -135,14 +144,27 @@ def main():
     rank_list = evaluater.rank(labels, alignments)
     s_rate, s_count = evaluater.single(rank_list)
     m_rate, m_count = evaluater.multiple(rank_list)
-    logger.info('TEST ## s: {} | {}'.format(' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
-    logger.info('TEST ## m: {} | {}'.format(' '.join(x for x in m_rate), ' '.join(x for x in m_count)))
+    logger.info('E{} ## normal'.format(epoch))
+    logger.info('E{} ## s: {} | {}'.format(epoch, ' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
+    logger.info('E{} ## m: {} | {}'.format(epoch, ' '.join(x for x in m_rate), ' '.join(x for x in m_count)))
+    rank_list = evaluater.rank(labels, alignments, init_flag=True)
+    s_rate_i, s_count = evaluater.single(rank_list)
+    m_rate_i, m_count = evaluater.multiple(rank_list)
+    logger.info('E{} ## normal init'.format(epoch))
+    logger.info('E{} ## s: {} | {}'.format(epoch, ' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
+    logger.info('E{} ## m: {} | {}'.format(epoch, ' '.join(x for x in m_rate), ' '.join(x for x in m_count)))
+    rank_list = evaluater.rank(labels, alignments, init_flag=True, align_flag=True)
+    s_rate_a, s_count = evaluater.single(rank_list)
+    m_rate_a, m_count = evaluater.multiple(rank_list)
+    logger.info('E{} ## normal init align'.format(epoch))
+    logger.info('E{} ## s: {} | {}'.format(epoch, ' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
+    logger.info('E{} ## m: {} | {}'.format(epoch, ' '.join(x for x in m_rate), ' '.join(x for x in m_count)))
 
-    with open(model_file + '.hypo.test', 'w')as f:
+    with open(model_file + '.hypo{}.test'.format(align_weight), 'w')as f:
         [f.write(o + '\n') for o in outputs]
-    with open(model_file + '.attn.test', 'w')as f:
+    with open(model_file + '.label{}.test'.format(align_weight), 'w')as f:
         [f.write('{}\n'.format(l)) for l in labels]
-    with open(model_file + '.align.test', 'w')as f:
+    with open(model_file + '.align{}.test'.format(align_weight), 'w')as f:
         [f.write('{}\n'.format(a)) for a in alignments]
 
 

@@ -161,7 +161,7 @@ class LabelClassifier(chainer.Chain):
 
 
 class Multi(chainer.Chain):
-    def __init__(self, src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout, coefficient):
+    def __init__(self, src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout, coefficient, multi=False):
         super(Multi, self).__init__()
         with self.init_scope():
             self.wordEnc = WordEncoder(src_vocab_size, embed_size, hidden_size, dropout)
@@ -170,6 +170,7 @@ class Multi(chainer.Chain):
             self.labelClassifier = LabelClassifier(class_size, hidden_size, dropout)
         self.lossfun = F.softmax_cross_entropy
         self.coefficient = coefficient
+        self.multi = multi
 
     def __call__(self, sources, targets_sos, targets_eos, label_gold):
         coe = self.coefficient
@@ -179,21 +180,19 @@ class Multi(chainer.Chain):
         # attn_score = []
         # for i, x in enumerate(self.xp.sum(alignment, axis=1)):
         #     attn_score.append(x / len(word_ys[i]))
-        targets_eos = F.pad_sequence(targets_eos, length=None, padding=0)
-
-        concat_word_ys = F.concat(word_ys, axis=0)
-        concat_word_ys_gold = F.concat(targets_eos, axis=0)
-        
-        loss_word = self.lossfun(concat_word_ys, concat_word_ys_gold, ignore_label=0)
-        # print(loss_word, loss_word.data)
-
         label_proj = self.labelClassifier(enc_ys, hs)
         concat_label_proj = F.concat(label_proj, axis=0)
         concat_label_gold = F.concat(label_gold, axis=0)
         loss_label = self.lossfun(concat_label_proj, concat_label_gold)
+        loss = loss_label
 
-        # print(coe * loss_word, (1-coe) * loss_label)
-        loss = coe * loss_word + (1-coe) * loss_label
+        if self.multi:
+            targets_eos = F.pad_sequence(targets_eos, length=None, padding=0)
+            concat_word_ys = F.concat(word_ys, axis=0)
+            concat_word_ys_gold = F.concat(targets_eos, axis=0)
+            loss_word = self.lossfun(concat_word_ys, concat_word_ys_gold, ignore_label=0)
+            # print(coe * loss_word, (1-coe) * loss_label)
+            loss = coe * loss_word + (1-coe) * loss_label
 
         return loss
 

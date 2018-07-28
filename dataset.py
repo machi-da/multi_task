@@ -1,9 +1,15 @@
+import argparse
 import copy
+import configparser
+import glob
 import pickle
+import os
 import numpy as np
 import sentencepiece as spm
 from collections import Counter
 import random
+
+import convert
 
 
 def load(file_name):
@@ -151,7 +157,10 @@ class VocabSubword:
 
     def _build_vocab(self, text_file, model_name, vocab_size):
         args = '''
-                --control_symbols=<eod> 
+                --pad_id=0 
+                --unk_id=1 
+                --bos_id=2
+                --eos_id=3
                 --input={} 
                 --model_prefix={} 
                 --vocab_size={} 
@@ -240,3 +249,88 @@ class Iterator:
                 if not batch:
                     continue
                 yield batch
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('model_dir')
+    parser.add_argument('--type', '-t', choices=['l', 'lr', 's', 'sr'], default='l')
+    args = parser.parse_args()
+
+    model_dir = args.model_dir
+    """LOAD CONFIG FILE"""
+    config_files = glob.glob(os.path.join(model_dir, '*.ini'))
+    assert len(config_files) == 1, 'Put only one config file in the directory'
+    config_file = config_files[0]
+    config = configparser.ConfigParser()
+    config.read(config_file)
+
+    gpu_id = -1
+    reg = False if args.type == 'l' or args.type == 's' else True
+
+    vocab_type = config['Parameter']['vocab_type']
+    vocab_size = int(config['Parameter']['vocab_size'])
+
+    if args.type == 'l':
+        section = 'Local'
+    elif args.type == 'lr':
+        section = 'Local_Reg'
+    elif args.type == 's':
+        section = 'Server'
+    else:
+        section = 'Server_Reg'
+    train_src_file = config[section]['train_src_file']
+    train_trg_file = config[section]['train_trg_file']
+    valid_src_file = config[section]['valid_src_file']
+    valid_trg_file = config[section]['valid_trg_file']
+    test_src_file = config[section]['test_src_file']
+    correct_txt_file = config[section]['correct_txt_file']
+
+    if vocab_type == 'normal':
+        src_vocab = VocabNormal(reg)
+        trg_vocab = VocabNormal(reg)
+        if os.path.isfile(model_dir + 'src_vocab.normal.pkl') and os.path.isfile(model_dir + 'trg_vocab.normal.pkl'):
+            src_vocab.load(model_dir + 'src_vocab.normal.pkl')
+            trg_vocab.load(model_dir + 'trg_vocab.normal.pkl')
+        else:
+            init_vocab = {'<pad>': 0, '<unk>': 1, '<s>': 2, '</s>': 3}
+            src_vocab.build(train_src_file, True,  init_vocab, vocab_size)
+            trg_vocab.build(train_trg_file, False, init_vocab, vocab_size)
+            save_pickle(model_dir + 'src_vocab.normal.pkl', src_vocab.vocab)
+            save_pickle(model_dir + 'trg_vocab.normal.pkl', trg_vocab.vocab)
+        src_vocab.set_reverse_vocab()
+        trg_vocab.set_reverse_vocab()
+
+        sos = convert.convert_list(np.array([src_vocab.vocab['<s>']], dtype=np.int32), gpu_id)
+        eos = convert.convert_list(np.array([src_vocab.vocab['</s>']], dtype=np.int32), gpu_id)
+
+    elif vocab_type == 'subword':
+        src_vocab = VocabSubword()
+        trg_vocab = VocabSubword()
+        if os.path.isfile(model_dir + 'src_vocab.sub.model') and os.path.isfile(model_dir + 'trg_vocab.sub.model'):
+            src_vocab.load(model_dir + 'src_vocab.sub.model')
+            trg_vocab.load(model_dir + 'trg_vocab.sub.model')
+        else:
+            src_vocab.build(train_src_file, model_dir + 'src_vocab.sub', vocab_size)
+            trg_vocab.build(train_trg_file, model_dir + 'trg_vocab.sub', vocab_size)
+
+        sos = convert.convert_list(np.array([src_vocab.vocab.PieceToId('<s>')], dtype=np.int32), gpu_id)
+        eos = convert.convert_list(np.array([src_vocab.vocab.PieceToId('</s>')], dtype=np.int32), gpu_id)
+
+    src_file = test_src_file
+    trg_file = train_trg_file
+
+    if reg:
+        label, src = load_with_label_reg(src_file)
+    else:
+        label, src = load_with_label(src_file)
+    trg = load(trg_file)
+
+    for i, (s, t) in enumerate(zip(src, trg), start=1):
+        print('{} src'.format(i))
+        for ss in s:
+            print(ss)
+            print(src_vocab.word2id(ss, sos, eos))
+        # print('{} trg'.format(i))
+        # print(t)
+        # print(trg_vocab.word2id(t))

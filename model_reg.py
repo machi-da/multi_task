@@ -118,7 +118,7 @@ class LabelClassifier(chainer.Chain):
 
 
 class MultiReg(chainer.Chain):
-    def __init__(self, src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout, coefficient):
+    def __init__(self, src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout, coefficient, multi=False):
         super(MultiReg, self).__init__()
         with self.init_scope():
             self.wordEnc = WordEncoder(src_vocab_size, embed_size, hidden_size, dropout)
@@ -127,6 +127,7 @@ class MultiReg(chainer.Chain):
             self.labelClassifier = LabelClassifier(class_size, hidden_size, dropout)
         self.lossfun = F.softmax_cross_entropy
         self.coefficient = coefficient
+        self.multi = multi
 
     def __call__(self, sources, targets_sos, targets_eos, label_gold):
         coe = self.coefficient
@@ -136,20 +137,19 @@ class MultiReg(chainer.Chain):
         # attn_score = []
         # for i, x in enumerate(self.xp.sum(alignment, axis=1)):
         #     attn_score.append(x / len(word_ys[i]))
-        targets_eos = F.pad_sequence(targets_eos, length=None, padding=0)
-
-        concat_word_ys = F.concat(word_ys, axis=0)
-        concat_word_ys_gold = F.concat(targets_eos, axis=0)
-
-        loss_word = self.lossfun(concat_word_ys, concat_word_ys_gold, ignore_label=0)
-
         label_proj = self.labelClassifier(enc_ys, hs)
         concat_label_proj = F.concat(F.concat(label_proj, axis=0), axis=0)
         concat_label_gold = F.concat(label_gold, axis=0)
         loss_label = F.mean_squared_error(concat_label_proj, concat_label_gold)
+        loss = loss_label
 
-        # print(coe * loss_word, (1-coe) * loss_label)
-        loss = coe * loss_word + (1 - coe) * loss_label
+        if self.multi:
+            targets_eos = F.pad_sequence(targets_eos, length=None, padding=0)
+            concat_word_ys = F.concat(word_ys, axis=0)
+            concat_word_ys_gold = F.concat(targets_eos, axis=0)
+            loss_word = self.lossfun(concat_word_ys, concat_word_ys_gold, ignore_label=0)
+            # print(coe * loss_word, (1-coe) * loss_label)
+            loss = coe * loss_word + (1 - coe) * loss_label
 
         return loss
 
@@ -193,11 +193,12 @@ class MultiReg(chainer.Chain):
                 word = word.astype(self.xp.int32)
                 pre_word = word
                 if word == eos:
+                    attn_score = self.xp.sum(self.xp.array(attn_score, dtype=self.xp.float32), axis=0) / i
                     break
                 attn_score.append(alignment[0][0])
                 sentence.append(word)
             else:
-                attn_score = self.xp.sum(attn_score, axis=0) / i
+                attn_score = self.xp.sum(self.xp.array(attn_score, dtype=self.xp.float32), axis=0) / i
             sentences.append(self.xp.hstack(sentence[1:]))
             alignments.append(attn_score)
 
@@ -206,4 +207,4 @@ class MultiReg(chainer.Chain):
             l = F.softmax(l.T).data[0]
             label.append(l)
 
-        return sentences, label
+        return sentences, label, alignments
