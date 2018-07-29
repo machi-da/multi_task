@@ -228,7 +228,7 @@ class Multi(chainer.Chain):
             l = l.data[:, 1]
             label.append(l)
 
-        if self.multi:
+        if not self.multi:
             return sentences, label, alignments
 
         hs = F.transpose(hs, (1, 0, 2))

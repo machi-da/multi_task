@@ -179,6 +179,14 @@ class MultiReg(chainer.Chain):
 
         alignments = []
         sentences = []
+        label = []
+        for l in label_proj:
+            l = F.softmax(l.T).data[0]
+            label.append(l)
+
+        if not self.multi:
+            return sentences, label, alignments
+
         hs = F.transpose(hs, (1, 0, 2))
         cs = F.transpose(cs, (1, 0, 2))
         for h, c, y in zip(hs, cs, enc_ys):

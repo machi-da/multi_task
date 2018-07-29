@@ -151,15 +151,15 @@ def main():
     s_rate_i, s_count = evaluater.single(rank_list)
     m_rate_i, m_count = evaluater.multiple(rank_list)
     logger.info('E{} ## normal init'.format(epoch))
-    logger.info('E{} ## s: {} | {}'.format(epoch, ' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
-    logger.info('E{} ## m: {} | {}'.format(epoch, ' '.join(x for x in m_rate), ' '.join(x for x in m_count)))
+    logger.info('E{} ## s: {} | {}'.format(epoch, ' '.join(x for x in s_rate_i), ' '.join(x for x in s_count)))
+    logger.info('E{} ## m: {} | {}'.format(epoch, ' '.join(x for x in m_rate_i), ' '.join(x for x in m_count)))
     if multi:
         rank_list = evaluater.rank_init_align(labels, alignments)
         s_rate_a, s_count = evaluater.single(rank_list)
         m_rate_a, m_count = evaluater.multiple(rank_list)
         logger.info('E{} ## normal init align'.format(epoch))
-        logger.info('E{} ## s: {} | {}'.format(epoch, ' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
-        logger.info('E{} ## m: {} | {}'.format(epoch, ' '.join(x for x in m_rate), ' '.join(x for x in m_count)))
+        logger.info('E{} ## s: {} | {}'.format(epoch, ' '.join(x for x in s_rate_a), ' '.join(x for x in s_count)))
+        logger.info('E{} ## m: {} | {}'.format(epoch, ' '.join(x for x in m_rate_a), ' '.join(x for x in m_count)))
 
     with open(model_file + '.label{}.test'.format(align_weight), 'w')as f:
         [f.write('{}\n'.format(l)) for l in labels]

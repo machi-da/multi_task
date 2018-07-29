@@ -87,7 +87,6 @@ def main():
     vocab_size = int(config['Parameter']['vocab_size'])
     coefficient = float(config['Parameter']['coefficient'])
     align_weight = float(config['Parameter']['align_weight'])
-    multi = bool(int(config['Parameter']['multi']))
     """LOGGER"""
     logger = getLogger(__name__)
     logger.setLevel(logging.INFO)
@@ -219,11 +218,10 @@ def main():
                 output, label, align = model.predict(batch[0], sos, eos)
             for l in label:
                 labels.append(l)
-            if multi:
-                for o, a in zip(output, align):
-                    o = chainer.cuda.to_cpu(o)
-                    outputs.append(trg_vocab.id2word(o))
-                    alignments.append(a)
+            for o, a in zip(output, align):
+                o = chainer.cuda.to_cpu(o)
+                outputs.append(trg_vocab.id2word(o))
+                alignments.append(a)
         rank_list = evaluater.rank(labels)
         s_rate, s_count = evaluater.single(rank_list)
         m_rate, m_count = evaluater.multiple(rank_list)
@@ -234,21 +232,22 @@ def main():
         s_rate_i, s_count = evaluater.single(rank_list)
         m_rate_i, m_count = evaluater.multiple(rank_list)
         logger.info('E{} ## normal init'.format(epoch))
-        logger.info('E{} ## s: {} | {}'.format(epoch, ' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
-        logger.info('E{} ## m: {} | {}'.format(epoch, ' '.join(x for x in m_rate), ' '.join(x for x in m_count)))
+        logger.info('E{} ## s: {} | {}'.format(epoch, ' '.join(x for x in s_rate_i), ' '.join(x for x in s_count)))
+        logger.info('E{} ## m: {} | {}'.format(epoch, ' '.join(x for x in m_rate_i), ' '.join(x for x in m_count)))
         res = '{},{},{},{},{},{}'.format(epoch, valid_loss, s_rate[-1], m_rate[-1], s_rate_i[-1], m_rate_i[-1])
         if multi:
             rank_list = evaluater.rank_init_align(labels, alignments)
             s_rate_a, s_count = evaluater.single(rank_list)
             m_rate_a, m_count = evaluater.multiple(rank_list)
             logger.info('E{} ## normal init align'.format(epoch))
-            logger.info('E{} ## s: {} | {}'.format(epoch, ' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
-            logger.info('E{} ## m: {} | {}'.format(epoch, ' '.join(x for x in m_rate), ' '.join(x for x in m_count)))
+            logger.info('E{} ## s: {} | {}'.format(epoch, ' '.join(x for x in s_rate_a), ' '.join(x for x in s_count)))
+            logger.info('E{} ## m: {} | {}'.format(epoch, ' '.join(x for x in m_rate_a), ' '.join(x for x in m_count)))
             res = '{},{},{},{},{},{},{},{}'.format(epoch, valid_loss, s_rate[-1], m_rate[-1], s_rate_i[-1], m_rate_i[-1], s_rate_a[-1], m_rate_a[-1])
 
         with open(model_dir + 'model_epoch_{}.label'.format(epoch), 'w')as f:
             [f.write('{}\n'.format(l)) for l in labels]
         if multi:
+
             with open(model_dir + 'model_epoch_{}.hypo'.format(epoch), 'w')as f:
                 [f.write(o + '\n') for o in outputs]
             with open(model_dir + 'model_epoch_{}.align'.format(epoch), 'w')as f:
