@@ -68,7 +68,6 @@ class Evaluate:
         for label, d, align in zip(label_data, self.correct_data, align_list):
             label = label + (self.align_weight * align)
             correct = [int(num) - 1 for num in d.split('\t')[0].split(',')]
-            print(label, correct)
             rank = []
             true_index = list(np.where(label >= self.label_threshold)[0])
             for _ in range(len(label)):
@@ -93,7 +92,7 @@ class Evaluate:
                 if index in true_index:
                     true_index.remove(index)
             rank_list.append(rank)
-        print(rank_list)
+
         return rank_list
 
     def single(self, rank_list):
