@@ -10,12 +10,30 @@ class Evaluate:
         self.align_weight = align_weight
         self.label_threshold = label_threshold
 
-    def rank(self, label_list, align_list, init_flag=False, align_flag=False):
+    def rank(self, label_list):
         label_data = copy.deepcopy(label_list)
         rank_list = []
-        for label, d, align in zip(label_data, self.correct_data, align_list):
-            if align_flag:
-                label = label + (self.align_weight * align)
+        for label, d in zip(label_data, self.correct_data):
+            correct = [int(num) - 1 for num in d.split('\t')[0].split(',')]
+            rank = []
+            true_index = list(np.where(label >= self.label_threshold)[0])
+            for _ in range(len(label)):
+                index = label.argmax()
+                if index in correct:
+                    rank.append((index, True))
+                else:
+                    rank.append((index, False))
+                label[index] = -1
+                if index in true_index:
+                    true_index.remove(index)
+            rank_list.append(rank)
+
+        return rank_list
+
+    def rank_init(self, label_list):
+        label_data = copy.deepcopy(label_list)
+        rank_list = []
+        for label, d in zip(label_data, self.correct_data):
             correct = [int(num) - 1 for num in d.split('\t')[0].split(',')]
             rank = []
             true_index = list(np.where(label >= self.label_threshold)[0])
@@ -23,16 +41,48 @@ class Evaluate:
                 index = label.argmax()
 
                 # 先頭を優先
-                if init_flag:
-                    if len(true_index) > 0:
-                        if index != true_index[0]:
-                            if true_index[0] in label:
-                                rank.append((true_index[0], True))
-                            else:
-                                rank.append((true_index[0], False))
-                            label[true_index[0]] = -1
-                            true_index = true_index[1:]
-                            continue
+                if len(true_index) > 0:
+                    if index != true_index[0]:
+                        if true_index[0] in label:
+                            rank.append((true_index[0], True))
+                        else:
+                            rank.append((true_index[0], False))
+                        label[true_index[0]] = -1
+                        true_index = true_index[1:]
+                        continue
+
+                if index in correct:
+                    rank.append((index, True))
+                else:
+                    rank.append((index, False))
+                label[index] = -1
+                if index in true_index:
+                    true_index.remove(index)
+            rank_list.append(rank)
+
+        return rank_list
+
+    def rank_init_align(self, label_list, align_list):
+        label_data = copy.deepcopy(label_list)
+        rank_list = []
+        for label, d, align in zip(label_data, self.correct_data, align_list):
+            label = label + (self.align_weight * align)
+            correct = [int(num) - 1 for num in d.split('\t')[0].split(',')]
+            rank = []
+            true_index = list(np.where(label >= self.label_threshold)[0])
+            for _ in range(len(label)):
+                index = label.argmax()
+
+                # 先頭を優先
+                if len(true_index) > 0:
+                    if index != true_index[0]:
+                        if true_index[0] in label:
+                            rank.append((true_index[0], True))
+                        else:
+                            rank.append((true_index[0], False))
+                        label[true_index[0]] = -1
+                        true_index = true_index[1:]
+                        continue
 
                 if index in correct:
                     rank.append((index, True))

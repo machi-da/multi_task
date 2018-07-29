@@ -222,6 +222,15 @@ class Multi(chainer.Chain):
 
         alignments = []
         sentences = []
+        label = []
+        for l in label_proj:
+            l = F.softmax(l)
+            l = l.data[:, 1]
+            label.append(l)
+
+        if self.multi:
+            return sentences, label, alignments
+
         hs = F.transpose(hs, (1, 0, 2))
         cs = F.transpose(cs, (1, 0, 2))
         for h, c, y in zip(hs, cs, enc_ys):
@@ -244,11 +253,5 @@ class Multi(chainer.Chain):
                 attn_score = self.xp.sum(self.xp.array(attn_score, dtype=self.xp.float32), axis=0) / i
             sentences.append(self.xp.hstack(sentence[1:]))
             alignments.append(attn_score)
-
-        label = []
-        for l in label_proj:
-            l = F.softmax(l)
-            l = l.data[:, 1]
-            label.append(l)
             
         return sentences, label, alignments

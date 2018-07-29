@@ -27,8 +27,9 @@ def parse_args():
     parser.add_argument('--epoch', '-e', type=int, default=20)
     parser.add_argument('--interval', '-i', type=int, default=100000)
     parser.add_argument('--gpu', '-g', type=int, default=-1)
-    parser.add_argument('--type', '-t', choices=['l', 'lr', 's', 'sr'], default='l')
+    parser.add_argument('--model', '-m', choices=['multi', 'nn'], default='multi')
     parser.add_argument('--vocab', '-v', choices=['normal', 'subword'], default='normal')
+    parser.add_argument('--type', '-t', choices=['l', 'lr', 's', 'sr'], default='l')
     args = parser.parse_args()
     return args
 
@@ -60,13 +61,16 @@ def main():
 
     """DIR PREPARE"""
     coefficient = float(config['Parameter']['coefficient'])
-    multi = bool(int(config['Parameter']['multi']))
+    multi = True if args.model == 'multi' else False
     base_dir = config[section]['base_dir']
     dir_path_last = re.search(r'.*/(.*?)$', base_dir).group(1)
+    result = []
     if multi:
+        result.append('epoch,valid_loss,s,m,s_init,m_init,s_align,m_align')
         model_dir = './multi_{}_{}_c{}_{}/'.format(vocab_type, args.type, coefficient, dir_path_last)
     else:
-        model_dir = './nn_{}_{}/'.format(vocab_type, dir_path_last)
+        result.append('epoch,valid_loss,s,m,s_init,m_init')
+        model_dir = './nn_{}_{}_{}/'.format(vocab_type, args.type, dir_path_last)
     if not os.path.exists(model_dir):
         os.mkdir(model_dir)
     shutil.copyfile(config_file, model_dir + config_file)
@@ -108,7 +112,6 @@ def main():
     valid_src_file = config[section]['valid_src_file']
     valid_trg_file = config[section]['valid_trg_file']
     test_src_file = config[section]['test_src_file']
-    correct_txt_file = config[section]['correct_txt_file']
 
     train_data_size = dataset.data_size(train_src_file)
     valid_data_size = dataset.data_size(valid_src_file)
@@ -139,8 +142,8 @@ def main():
             src_vocab.load(model_dir + 'src_vocab.sub.model')
             trg_vocab.load(model_dir + 'trg_vocab.sub.model')
         else:
-            src_vocab.build(train_src_file, model_dir + 'src_vocab.sub', vocab_size)
-            trg_vocab.build(train_trg_file, model_dir + 'trg_vocab.sub', vocab_size)
+            src_vocab.build(train_src_file + '.sub', model_dir + 'src_vocab.sub', vocab_size)
+            trg_vocab.build(train_trg_file + '.sub', model_dir + 'trg_vocab.sub', vocab_size)
 
         sos = convert.convert_list(np.array([src_vocab.vocab.PieceToId('<s>')], dtype=np.int32), gpu_id)
         eos = convert.convert_list(np.array([src_vocab.vocab.PieceToId('</s>')], dtype=np.int32), gpu_id)
@@ -149,10 +152,10 @@ def main():
     trg_vocab_size = len(trg_vocab.vocab)
     logger.info('src_vocab size: {}, trg_vocab size: {}'.format(src_vocab_size, trg_vocab_size))
 
-    # train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, sort=True, shuffle=True, reg=reg)
-    train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False, reg=reg)
+    train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, sort=True, shuffle=True, reg=reg)
+    # train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False, reg=reg)
     valid_iter = dataset.Iterator(valid_src_file, valid_trg_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False, reg=reg)
-    evaluater = evaluate.Evaluate(correct_txt_file, align_weight)
+    evaluater = evaluate.Evaluate(test_src_file, align_weight)
     test_iter = dataset.Iterator(test_src_file, test_src_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False)
     """MODEL"""
     if reg:
@@ -173,7 +176,6 @@ def main():
     """TRAIN"""
     sum_loss = 0
     loss_dic = {}
-    result = []
     for epoch in range(1, n_epoch + 1):
         for i, batch in enumerate(train_iter.generate(), start=1):
             try:
@@ -215,46 +217,51 @@ def main():
             batch = convert.convert(batch, gpu_id)
             with chainer.no_backprop_mode(), chainer.using_config('train', False):
                 output, label, align = model.predict(batch[0], sos, eos)
-            for o, l, a in zip(output, label, align):
-                o = chainer.cuda.to_cpu(o)
-                outputs.append(trg_vocab.id2word(o))
+            for l in label:
                 labels.append(l)
-                alignments.append(a)
-        rank_list = evaluater.rank(labels, alignments)
+            if multi:
+                for o, a in zip(output, align):
+                    o = chainer.cuda.to_cpu(o)
+                    outputs.append(trg_vocab.id2word(o))
+                    alignments.append(a)
+        rank_list = evaluater.rank(labels)
         s_rate, s_count = evaluater.single(rank_list)
         m_rate, m_count = evaluater.multiple(rank_list)
         logger.info('E{} ## normal'.format(epoch))
         logger.info('E{} ## s: {} | {}'.format(epoch, ' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
         logger.info('E{} ## m: {} | {}'.format(epoch, ' '.join(x for x in m_rate), ' '.join(x for x in m_count)))
-        rank_list = evaluater.rank(labels, alignments, init_flag=True)
+        rank_list = evaluater.rank_init(labels)
         s_rate_i, s_count = evaluater.single(rank_list)
         m_rate_i, m_count = evaluater.multiple(rank_list)
         logger.info('E{} ## normal init'.format(epoch))
         logger.info('E{} ## s: {} | {}'.format(epoch, ' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
         logger.info('E{} ## m: {} | {}'.format(epoch, ' '.join(x for x in m_rate), ' '.join(x for x in m_count)))
-        rank_list = evaluater.rank(labels, alignments, init_flag=True, align_flag=True)
-        s_rate_a, s_count = evaluater.single(rank_list)
-        m_rate_a, m_count = evaluater.multiple(rank_list)
-        logger.info('E{} ## normal init align'.format(epoch))
-        logger.info('E{} ## s: {} | {}'.format(epoch, ' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
-        logger.info('E{} ## m: {} | {}'.format(epoch, ' '.join(x for x in m_rate), ' '.join(x for x in m_count)))
+        res = '{},{},{},{},{},{}'.format(epoch, valid_loss, s_rate[-1], m_rate[-1], s_rate_i[-1], m_rate_i[-1])
+        if multi:
+            rank_list = evaluater.rank_init_align(labels, alignments)
+            s_rate_a, s_count = evaluater.single(rank_list)
+            m_rate_a, m_count = evaluater.multiple(rank_list)
+            logger.info('E{} ## normal init align'.format(epoch))
+            logger.info('E{} ## s: {} | {}'.format(epoch, ' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
+            logger.info('E{} ## m: {} | {}'.format(epoch, ' '.join(x for x in m_rate), ' '.join(x for x in m_count)))
+            res = '{},{},{},{},{},{},{},{}'.format(epoch, valid_loss, s_rate[-1], m_rate[-1], s_rate_i[-1], m_rate_i[-1], s_rate_a[-1], m_rate_a[-1])
 
-        with open(model_dir + 'model_epoch_{}.hypo'.format(epoch), 'w')as f:
-            [f.write(o + '\n') for o in outputs]
         with open(model_dir + 'model_epoch_{}.label'.format(epoch), 'w')as f:
             [f.write('{}\n'.format(l)) for l in labels]
-        with open(model_dir + 'model_epoch_{}.align'.format(epoch), 'w')as f:
-            [f.write('{}\n'.format(a)) for a in alignments]
+        if multi:
+            with open(model_dir + 'model_epoch_{}.hypo'.format(epoch), 'w')as f:
+                [f.write(o + '\n') for o in outputs]
+            with open(model_dir + 'model_epoch_{}.align'.format(epoch), 'w')as f:
+                [f.write('{}\n'.format(a)) for a in alignments]
 
-        result.append('{},{},{},{},{},{},{},{}'.format(epoch, valid_loss, s_rate[-1], m_rate[-1], s_rate_i[-1], m_rate_i[-1], s_rate_a[-1], m_rate_a[-1]))
+        result.append(res)
 
     """MODEL SAVE"""
     best_epoch = min(loss_dic, key=(lambda x: loss_dic[x]))
-    logger.info('best_epoch:{0}'.format(best_epoch))
+    logger.info('best_epoch:{}'.format(best_epoch))
     chainer.serializers.save_npz(model_dir + 'best_model.npz', model)
 
     with open(model_dir + 'result.csv', 'w')as f:
-        f.write('epoch,valid_loss,s,m,s_init,m_init,s_align,m_align\n')
         [f.write(r + '\n') for r in result]
 
 

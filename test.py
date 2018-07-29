@@ -1,7 +1,6 @@
 import argparse
 import configparser
 import os
-import re
 import glob
 import logging
 import numpy as np
@@ -85,7 +84,6 @@ def main():
     """DATASET"""
     section = model_type(data_type)
     test_src_file = config[section]['test_src_file']
-    correct_txt_file = config[section]['correct_txt_file']
 
     test_data_size = dataset.data_size(test_src_file)
     logger.info('test size: {0}'.format(test_data_size))
@@ -113,7 +111,7 @@ def main():
     trg_vocab_size = len(trg_vocab.vocab)
     logger.info('src_vocab size: {}, trg_vocab size: {}'.format(src_vocab_size, trg_vocab_size))
 
-    evaluater = evaluate.Evaluate(correct_txt_file, align_weight)
+    evaluater = evaluate.Evaluate(test_src_file, align_weight)
     test_iter = dataset.Iterator(test_src_file, test_src_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False)
     """MODEL"""
     if reg:
@@ -136,36 +134,40 @@ def main():
         batch = convert.convert(batch, gpu_id)
         with chainer.no_backprop_mode(), chainer.using_config('train', False):
             output, label, align = model.predict(batch[0], sos, eos)
-        for o, l, a in zip(output, label, align):
-            o = chainer.cuda.to_cpu(o)
-            outputs.append(trg_vocab.id2word(o))
+        for l in label:
             labels.append(l)
-            alignments.append(a)
-    rank_list = evaluater.rank(labels, alignments)
+        if multi:
+            for o, a in zip(output, align):
+                o = chainer.cuda.to_cpu(o)
+                outputs.append(trg_vocab.id2word(o))
+                alignments.append(a)
+    rank_list = evaluater.rank(labels)
     s_rate, s_count = evaluater.single(rank_list)
     m_rate, m_count = evaluater.multiple(rank_list)
     logger.info('E{} ## normal'.format(epoch))
     logger.info('E{} ## s: {} | {}'.format(epoch, ' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
     logger.info('E{} ## m: {} | {}'.format(epoch, ' '.join(x for x in m_rate), ' '.join(x for x in m_count)))
-    rank_list = evaluater.rank(labels, alignments, init_flag=True)
+    rank_list = evaluater.rank_init(labels)
     s_rate_i, s_count = evaluater.single(rank_list)
     m_rate_i, m_count = evaluater.multiple(rank_list)
     logger.info('E{} ## normal init'.format(epoch))
     logger.info('E{} ## s: {} | {}'.format(epoch, ' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
     logger.info('E{} ## m: {} | {}'.format(epoch, ' '.join(x for x in m_rate), ' '.join(x for x in m_count)))
-    rank_list = evaluater.rank(labels, alignments, init_flag=True, align_flag=True)
-    s_rate_a, s_count = evaluater.single(rank_list)
-    m_rate_a, m_count = evaluater.multiple(rank_list)
-    logger.info('E{} ## normal init align'.format(epoch))
-    logger.info('E{} ## s: {} | {}'.format(epoch, ' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
-    logger.info('E{} ## m: {} | {}'.format(epoch, ' '.join(x for x in m_rate), ' '.join(x for x in m_count)))
+    if multi:
+        rank_list = evaluater.rank_init_align(labels, alignments)
+        s_rate_a, s_count = evaluater.single(rank_list)
+        m_rate_a, m_count = evaluater.multiple(rank_list)
+        logger.info('E{} ## normal init align'.format(epoch))
+        logger.info('E{} ## s: {} | {}'.format(epoch, ' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
+        logger.info('E{} ## m: {} | {}'.format(epoch, ' '.join(x for x in m_rate), ' '.join(x for x in m_count)))
 
-    with open(model_file + '.hypo{}.test'.format(align_weight), 'w')as f:
-        [f.write(o + '\n') for o in outputs]
     with open(model_file + '.label{}.test'.format(align_weight), 'w')as f:
         [f.write('{}\n'.format(l)) for l in labels]
-    with open(model_file + '.align{}.test'.format(align_weight), 'w')as f:
-        [f.write('{}\n'.format(a)) for a in alignments]
+    if multi:
+        with open(model_file + '.hypo{}.test'.format(align_weight), 'w')as f:
+            [f.write(o + '\n') for o in outputs]
+        with open(model_file + '.align{}.test'.format(align_weight), 'w')as f:
+            [f.write('{}\n'.format(a)) for a in alignments]
 
 
 if __name__ == '__main__':
