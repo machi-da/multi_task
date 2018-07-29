@@ -217,7 +217,7 @@ def main():
             with chainer.no_backprop_mode(), chainer.using_config('train', False):
                 output, label, align = model.predict(batch[0], sos, eos)
             for l in label:
-                labels.append(l)
+                labels.append(chainer.cuda.to_cpu(l))
             for o, a in zip(output, align):
                 o = chainer.cuda.to_cpu(o)
                 outputs.append(trg_vocab.id2word(o))

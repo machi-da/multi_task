@@ -254,10 +254,13 @@ class Iterator:
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('model_dir')
-    parser.add_argument('--type', '-t', choices=['l', 'lr', 's', 'sr'], default='l')
     args = parser.parse_args()
 
     model_dir = args.model_dir
+    if 'normal' in model_dir:
+        vocab_type = 'normal'
+    else:
+        vocab_type = 'subword'
     """LOAD CONFIG FILE"""
     config_files = glob.glob(os.path.join(model_dir, '*.ini'))
     assert len(config_files) == 1, 'Put only one config file in the directory'
@@ -266,16 +269,16 @@ if __name__ == '__main__':
     config.read(config_file)
 
     gpu_id = -1
-    reg = False if args.type == 'l' or args.type == 's' else True
+    data_type = model_dir.split('_')[2]
+    reg = False if data_type == 'l' or data_type == 's' else True
 
-    vocab_type = config['Parameter']['vocab_type']
     vocab_size = int(config['Parameter']['vocab_size'])
 
-    if args.type == 'l':
+    if data_type == 'l':
         section = 'Local'
-    elif args.type == 'lr':
+    elif data_type == 'lr':
         section = 'Local_Reg'
-    elif args.type == 's':
+    elif data_type == 's':
         section = 'Server'
     else:
         section = 'Server_Reg'
@@ -284,7 +287,6 @@ if __name__ == '__main__':
     valid_src_file = config[section]['valid_src_file']
     valid_trg_file = config[section]['valid_trg_file']
     test_src_file = config[section]['test_src_file']
-    correct_txt_file = config[section]['correct_txt_file']
 
     if vocab_type == 'normal':
         src_vocab = VocabNormal(reg)
@@ -311,8 +313,8 @@ if __name__ == '__main__':
             src_vocab.load(model_dir + 'src_vocab.sub.model')
             trg_vocab.load(model_dir + 'trg_vocab.sub.model')
         else:
-            src_vocab.build(train_src_file, model_dir + 'src_vocab.sub', vocab_size)
-            trg_vocab.build(train_trg_file, model_dir + 'trg_vocab.sub', vocab_size)
+            src_vocab.build(train_src_file + '.sub', model_dir + 'src_vocab.sub', vocab_size)
+            trg_vocab.build(train_trg_file + '.sub', model_dir + 'trg_vocab.sub', vocab_size)
 
         sos = convert.convert_list(np.array([src_vocab.vocab.PieceToId('<s>')], dtype=np.int32), gpu_id)
         eos = convert.convert_list(np.array([src_vocab.vocab.PieceToId('</s>')], dtype=np.int32), gpu_id)

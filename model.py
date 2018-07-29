@@ -224,7 +224,7 @@ class Multi(chainer.Chain):
         sentences = []
         label = []
         for l in label_proj:
-            l = F.softmax(l)
+            # l = F.softmax(l)
             l = l.data[:, 1]
             label.append(l)
 

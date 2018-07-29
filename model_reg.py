@@ -181,7 +181,8 @@ class MultiReg(chainer.Chain):
         sentences = []
         label = []
         for l in label_proj:
-            l = F.softmax(l.T).data[0]
+            # l = F.softmax(l.T).data[0]
+            l = l.T.data[0]
             label.append(l)
 
         if not self.multi:
@@ -209,10 +210,5 @@ class MultiReg(chainer.Chain):
                 attn_score = self.xp.sum(self.xp.array(attn_score, dtype=self.xp.float32), axis=0) / i
             sentences.append(self.xp.hstack(sentence[1:]))
             alignments.append(attn_score)
-
-        label = []
-        for l, a in zip(label_proj, alignments):
-            l = F.softmax(l.T).data[0]
-            label.append(l)
 
         return sentences, label, alignments
