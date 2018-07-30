@@ -1,4 +1,8 @@
+import configparser
 import sys
+import re
+import os
+import glob
 import copy
 import numpy as np
 
@@ -23,7 +27,7 @@ class Evaluate:
                     rank.append((index, True))
                 else:
                     rank.append((index, False))
-                label[index] = -1
+                label[index] = -1000
                 if index in true_index:
                     true_index.remove(index)
             rank_list.append(rank)
@@ -43,11 +47,11 @@ class Evaluate:
                 # 先頭を優先
                 if len(true_index) > 0:
                     if index != true_index[0]:
-                        if true_index[0] in label:
+                        if true_index[0] in correct:
                             rank.append((true_index[0], True))
                         else:
                             rank.append((true_index[0], False))
-                        label[true_index[0]] = -1
+                        label[true_index[0]] = -1000
                         true_index = true_index[1:]
                         continue
 
@@ -55,7 +59,7 @@ class Evaluate:
                     rank.append((index, True))
                 else:
                     rank.append((index, False))
-                label[index] = -1
+                label[index] = -1000
                 if index in true_index:
                     true_index.remove(index)
             rank_list.append(rank)
@@ -76,11 +80,11 @@ class Evaluate:
                 # 先頭を優先
                 if len(true_index) > 0:
                     if index != true_index[0]:
-                        if true_index[0] in label:
+                        if true_index[0] in correct:
                             rank.append((true_index[0], True))
                         else:
                             rank.append((true_index[0], False))
-                        label[true_index[0]] = -1
+                        label[true_index[0]] = -1000
                         true_index = true_index[1:]
                         continue
 
@@ -88,7 +92,7 @@ class Evaluate:
                     rank.append((index, True))
                 else:
                     rank.append((index, False))
-                label[index] = -1
+                label[index] = -1000
                 if index in true_index:
                     true_index.remove(index)
             rank_list.append(rank)
@@ -153,10 +157,30 @@ class Evaluate:
         return rate, count
 
 
+def model_type(t):
+    if t == 'l':
+        return 'Local'
+    elif t == 'lr':
+        return 'Local_Reg'
+    elif t == 's':
+        return 'Server'
+    else:
+        return 'Server_Reg'
+
+
 if __name__ == '__main__':
     args = sys.argv
-    correct = args[1]
-    model_name = args[2]
+    model_name = args[1][:-4]
+    model_dir = re.search(r'^(.*/)', args[1]).group(1)
+
+    config_files = glob.glob(os.path.join(model_dir, '*.ini'))
+    config_file = config_files[0]
+    config = configparser.ConfigParser()
+    config.read(config_file)
+
+    data_type = model_dir.split('_')[2]
+    section = model_type(data_type)
+    correct = config[section]['test_src_file']
 
     label = []
     with open(model_name + '.label', 'r')as f:
@@ -165,34 +189,52 @@ if __name__ == '__main__':
         line = line[1:-2]
         score = np.array([float(l) for l in line.split()])
         label.append(score)
+    is_align = os.path.isfile(model_name + '.align')
+    if is_align:
+        align = []
+        with open(model_name + '.align', 'r')as f:
+            attn_data = f.readlines()
+        for line in attn_data:
+            line = line[1:-2]
+            score = np.array([float(l) for l in line.split()])
+            align.append(score)
 
-    align = []
-    with open(model_name + '.align', 'r')as f:
-        attn_data = f.readlines()
-    for line in attn_data:
-        line = line[1:-2]
-        score = np.array([float(l) for l in line.split()])
-        align.append(score)
-    
-    weight = 1.0
-    label_threshold = 0.7
-    evaluater = Evaluate(correct, weight, label_threshold)
-    
-    rank_list = evaluater.rank(label, align)
+    best_param_dic = {}
+
+    evaluater = Evaluate(correct)
+    rank_list = evaluater.rank(label)
     s_rate, s_count = evaluater.single(rank_list)
     m_rate, m_count = evaluater.multiple(rank_list)
     print('normal')
     print('s: {} | {}'.format(' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
     print('m: {} | {}'.format(' '.join(x for x in m_rate), ' '.join(x for x in m_count)))
-    rank_list = evaluater.rank(label, align, init_flag=True)
-    s_rate, s_count = evaluater.single(rank_list)
-    m_rate, m_count = evaluater.multiple(rank_list)
-    print('normal init')
-    print('s: {} | {}'.format(' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
-    print('m: {} | {}'.format(' '.join(x for x in m_rate), ' '.join(x for x in m_count)))
-    rank_list = evaluater.rank(label, align, init_flag=True, align_flag=True)
-    s_rate, s_count = evaluater.single(rank_list)
-    m_rate, m_count = evaluater.multiple(rank_list)
-    print('normal init align ')
-    print('s: {} | {}'.format(' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
-    print('m: {} | {}'.format(' '.join(x for x in m_rate), ' '.join(x for x in m_count)))
+    best_param_dic['normal'] = s_rate[-1]
+    weight = 1.0
+    for i in range(1, 10 + 1):
+        label_threshold = round(i * 0.1, 1)
+        evaluater = Evaluate(correct, weight, label_threshold)
+
+        rank_list = evaluater.rank_init(label)
+        s_rate, s_count = evaluater.single(rank_list)
+        m_rate, m_count = evaluater.multiple(rank_list)
+        print('{} normal init'.format(label_threshold))
+        print('s: {} | {}'.format(' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
+        print('m: {} | {}'.format(' '.join(x for x in m_rate), ' '.join(x for x in m_count)))
+        key = 'l{},w{}'.format(label_threshold, weight)
+        best_param_dic[key] = s_rate[-1]
+        if is_align:
+            for j in range(1, 10 + 1):
+                weight = round(j * 0.1, 1)
+                evaluater = Evaluate(correct, weight, label_threshold)
+                rank_list = evaluater.rank_init_align(label, align)
+                s_rate, s_count = evaluater.single(rank_list)
+                m_rate, m_count = evaluater.multiple(rank_list)
+                print('{}, {} normal init align'.format(label_threshold, weight))
+                print('s: {} | {}'.format(' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
+                print('m: {} | {}'.format(' '.join(x for x in m_rate), ' '.join(x for x in m_count)))
+                key = 'l{},w{}'.format(label_threshold, weight)
+                best_param_dic[key] = s_rate[-1]
+
+    key = max(best_param_dic, key=(lambda x: best_param_dic[x]))
+    print('\nBest param: {} {}'.format(key, best_param_dic[key]))
+

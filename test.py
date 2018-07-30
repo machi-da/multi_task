@@ -70,13 +70,16 @@ def main():
     dropout_ratio = float(config['Parameter']['dropout'])
     coefficient = float(config['Parameter']['coefficient'])
     align_weight = float(config['Parameter']['align_weight'])
-    multi = bool(int(config['Parameter']['multi']))
     """TEST DETAIL"""
     gpu_id = args.gpu
     batch_size = args.batch
     model_file = model_dir + 'model_epoch_{}.npz'.format(args.model)
     data_type = model_dir.split('_')[2]
     reg = False if data_type == 'l' or data_type == 's' else True
+    if 'multi' in model_dir:
+        multi = True
+    else:
+        multi = False
     if 'normal' in model_dir:
         vocab_type = 'normal'
     else:
@@ -135,7 +138,7 @@ def main():
         with chainer.no_backprop_mode(), chainer.using_config('train', False):
             output, label, align = model.predict(batch[0], sos, eos)
         for l in label:
-            labels.append(l)
+            labels.append(chainer.cuda.to_cpu(l))
         if multi:
             for o, a in zip(output, align):
                 o = chainer.cuda.to_cpu(o)
