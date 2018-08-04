@@ -12,7 +12,7 @@ import evaluate
 from model import Multi
 from model_reg import MultiReg
 
-# os.environ["CHAINER_TYPE_CHECK"] = "0"
+os.environ["CHAINER_TYPE_CHECK"] = "0"
 import chainer
 
 
@@ -21,7 +21,7 @@ def parse_args():
     parser.add_argument('model_dir')
     parser.add_argument('--batch', '-b', type=int, default=32)
     parser.add_argument('--gpu', '-g', type=int, default=-1)
-    parser.add_argument('--model', '-m', type=str, required=True)
+    parser.add_argument('--model_number', '-m', type=str, required=True)
     args = parser.parse_args()
     return args
 
@@ -69,11 +69,10 @@ def main():
     class_size = int(config['Parameter']['class_size'])
     dropout_ratio = float(config['Parameter']['dropout'])
     coefficient = float(config['Parameter']['coefficient'])
-    align_weight = float(config['Parameter']['align_weight'])
     """TEST DETAIL"""
     gpu_id = args.gpu
     batch_size = args.batch
-    model_file = model_dir + 'model_epoch_{}.npz'.format(args.model)
+    model_file = model_dir + 'model_epoch_{}.npz'.format(args.model_number)
     data_type = model_dir.split('_')[2]
     reg = False if data_type == 'l' or data_type == 's' else True
     if 'multi' in model_dir:
@@ -89,7 +88,7 @@ def main():
     test_src_file = config[section]['test_src_file']
 
     test_data_size = dataset.data_size(test_src_file)
-    logger.info('test size: {0}'.format(test_data_size))
+    logger.info('test size: {}'.format(test_data_size))
     if vocab_type == 'normal':
         src_vocab = dataset.VocabNormal(reg)
         src_vocab.load(model_dir + 'src_vocab.normal.pkl')
@@ -114,7 +113,7 @@ def main():
     trg_vocab_size = len(trg_vocab.vocab)
     logger.info('src_vocab size: {}, trg_vocab size: {}'.format(src_vocab_size, trg_vocab_size))
 
-    evaluater = evaluate.Evaluate(test_src_file, align_weight)
+    evaluater = evaluate.Evaluate(test_src_file)
     test_iter = dataset.Iterator(test_src_file, test_src_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False)
     """MODEL"""
     if reg:
@@ -139,37 +138,24 @@ def main():
             output, label, align = model.predict(batch[0], sos, eos)
         for l in label:
             labels.append(chainer.cuda.to_cpu(l))
-        if multi:
-            for o, a in zip(output, align):
-                o = chainer.cuda.to_cpu(o)
-                outputs.append(trg_vocab.id2word(o))
-                alignments.append(a)
-    rank_list = evaluater.rank(labels)
-    s_rate, s_count = evaluater.single(rank_list)
-    m_rate, m_count = evaluater.multiple(rank_list)
-    logger.info('E{} ## normal'.format(epoch))
-    logger.info('E{} ## s: {} | {}'.format(epoch, ' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
-    logger.info('E{} ## m: {} | {}'.format(epoch, ' '.join(x for x in m_rate), ' '.join(x for x in m_count)))
-    rank_list = evaluater.rank_init(labels)
-    s_rate_i, s_count = evaluater.single(rank_list)
-    m_rate_i, m_count = evaluater.multiple(rank_list)
-    logger.info('E{} ## normal init'.format(epoch))
-    logger.info('E{} ## s: {} | {}'.format(epoch, ' '.join(x for x in s_rate_i), ' '.join(x for x in s_count)))
-    logger.info('E{} ## m: {} | {}'.format(epoch, ' '.join(x for x in m_rate_i), ' '.join(x for x in m_count)))
-    if multi:
-        rank_list = evaluater.rank_init_align(labels, alignments)
-        s_rate_a, s_count = evaluater.single(rank_list)
-        m_rate_a, m_count = evaluater.multiple(rank_list)
-        logger.info('E{} ## normal init align'.format(epoch))
-        logger.info('E{} ## s: {} | {}'.format(epoch, ' '.join(x for x in s_rate_a), ' '.join(x for x in s_count)))
-        logger.info('E{} ## m: {} | {}'.format(epoch, ' '.join(x for x in m_rate_a), ' '.join(x for x in m_count)))
+        for o, a in zip(output, align):
+            o = chainer.cuda.to_cpu(o)
+            outputs.append(trg_vocab.id2word(o))
+            alignments.append(chainer.cuda.to_cpu(a))
+    file_name = model_file[:-3] + 'T.s_res.csv'
+    best_param_dic = evaluater.param_search(file_name, labels, alignments)
 
-    with open(model_file + '.label{}.test'.format(align_weight), 'w')as f:
+    if multi:
+        logger.info('E{} ## {}: {}, {}: {}, {}: {}'.format(epoch, 'normal', best_param_dic['normal'], 'init 0.7', best_param_dic['init 0.7'], 'mix 0.5', best_param_dic['mix 0.5']))
+    else:
+        logger.info('E{} ## {}: {}, {}: {}'.format(epoch, 'normal', best_param_dic['normal'], 'init 0.7', best_param_dic['init 0.7']))
+
+    with open(model_file[:-3] + 'T.label', 'w')as f:
         [f.write('{}\n'.format(l)) for l in labels]
     if multi:
-        with open(model_file + '.hypo{}.test'.format(align_weight), 'w')as f:
+        with open(model_file[:-3] + 'T.hypo', 'w')as f:
             [f.write(o + '\n') for o in outputs]
-        with open(model_file + '.align{}.test'.format(align_weight), 'w')as f:
+        with open(model_file[:-3] + 'T.align', 'w')as f:
             [f.write('{}\n'.format(a)) for a in alignments]
 
 

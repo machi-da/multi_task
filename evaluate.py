@@ -8,19 +8,16 @@ import numpy as np
 
 
 class Evaluate:
-    def __init__(self, correct_txt_file, align_weight=0, label_threshold=0.7):
+    def __init__(self, correct_txt_file):
         with open(correct_txt_file, 'r')as f:
             self.correct_data = f.readlines()
-        self.align_weight = align_weight
-        self.label_threshold = label_threshold
 
-    def rank(self, label_list):
+    def label(self, label_list):
         label_data = copy.deepcopy(label_list)
         rank_list = []
         for label, d in zip(label_data, self.correct_data):
             correct = [int(num) - 1 for num in d.split('\t')[0].split(',')]
             rank = []
-            true_index = list(np.where(label >= self.label_threshold)[0])
             for _ in range(len(label)):
                 index = label.argmax()
                 if index in correct:
@@ -28,19 +25,21 @@ class Evaluate:
                 else:
                     rank.append((index, False))
                 label[index] = -1000
-                if index in true_index:
-                    true_index.remove(index)
             rank_list.append(rank)
 
-        return rank_list
+        method = 'normal'
+        s_rate, s_count, s_result = self.single(rank_list, method)
+        m_rate, m_count = self.multiple(rank_list)
 
-    def rank_init(self, label_list):
+        return s_rate, s_count, m_rate, m_count, s_result
+
+    def label_init(self, label_list, init_threshold=0.7):
         label_data = copy.deepcopy(label_list)
         rank_list = []
         for label, d in zip(label_data, self.correct_data):
             correct = [int(num) - 1 for num in d.split('\t')[0].split(',')]
             rank = []
-            true_index = list(np.where(label >= self.label_threshold)[0])
+            true_index = list(np.where(label >= init_threshold)[0])
             for _ in range(len(label)):
                 index = label.argmax()
 
@@ -64,16 +63,43 @@ class Evaluate:
                     true_index.remove(index)
             rank_list.append(rank)
 
-        return rank_list
+        method = 'init_{}'.format(init_threshold)
+        s_rate, s_count, s_result = self.single(rank_list, method)
+        m_rate, m_count = self.multiple(rank_list)
 
-    def rank_init_align(self, label_list, align_list):
+        return s_rate, s_count, m_rate, m_count, s_result
+
+    def label_mix_align(self, label_list, align_list, weight=0.5):
         label_data = copy.deepcopy(label_list)
         rank_list = []
         for label, d, align in zip(label_data, self.correct_data, align_list):
-            label = label + (self.align_weight * align)
+            label = weight * label + (1 - weight) * align
             correct = [int(num) - 1 for num in d.split('\t')[0].split(',')]
             rank = []
-            true_index = list(np.where(label >= self.label_threshold)[0])
+            for _ in range(len(label)):
+                index = label.argmax()
+
+                if index in correct:
+                    rank.append((index, True))
+                else:
+                    rank.append((index, False))
+                label[index] = -1000
+            rank_list.append(rank)
+
+        method = 'mix_{}'.format(weight)
+        s_rate, s_count, s_result = self.single(rank_list, method)
+        m_rate, m_count = self.multiple(rank_list)
+
+        return s_rate, s_count, m_rate, m_count, s_result
+
+    def label_mix_aligh_init(self, label_list, align_list, init_threshold=0.7, weight=0.5):
+        label_data = copy.deepcopy(label_list)
+        rank_list = []
+        for label, d, align in zip(label_data, self.correct_data, align_list):
+            label = weight * label + (1 - weight) * align
+            correct = [int(num) - 1 for num in d.split('\t')[0].split(',')]
+            rank = []
+            true_index = list(np.where(label >= init_threshold)[0])
             for _ in range(len(label)):
                 index = label.argmax()
 
@@ -97,11 +123,16 @@ class Evaluate:
                     true_index.remove(index)
             rank_list.append(rank)
 
-        return rank_list
+        method = 'init_{} mix_{}'.format(init_threshold, weight)
+        s_rate, s_count, s_result = self.single(rank_list, method)
+        m_rate, m_count = self.multiple(rank_list)
 
-    def single(self, rank_list):
+        return s_rate, s_count, m_rate, m_count, s_result
+
+    def single(self, rank_list, method):
         score_dic = {2: [0, 0], 3: [0, 0], 4: [0, 0], 5: [0, 0], 6: [0, 0], 7: [0, 0]}
-        for r in rank_list:
+        result = [method]
+        for index, r in enumerate(rank_list, start=1):
             sent_num = len(r)
             # 正解ラベルの数: correct_num
             count_num = 0
@@ -117,6 +148,9 @@ class Evaluate:
                 score_dic[sent_num][1] += 1
                 if correct:
                     score_dic[sent_num][0] += 1
+                    result.append('1')
+                else:
+                    result.append('0')
 
         t_correct, t = sum([v[0] for k, v in score_dic.items()]), sum([v[1] for k, v in score_dic.items()])
         for v in score_dic.values():
@@ -127,7 +161,11 @@ class Evaluate:
         rate.append(str(round(micro_rate, 3)))
         count = ['{}/{}'.format(v[0], v[1]) for k, v in score_dic.items()]
         count.append('{}/{}'.format(t_correct, t))
-        return rate, count
+
+        result.insert(1, str(rate[-1]))
+        result = ','.join(result)
+
+        return rate, count, result
 
     def multiple(self, rank_list):
         score_dic = {2: [0, 0], 3: [0, 0], 4: [0, 0], 5: [0, 0], 6: [0, 0], 7: [0, 0]}
@@ -156,6 +194,47 @@ class Evaluate:
         count.append('{}/{}'.format(t_correct, t))
         return rate, count
 
+    def param_search(self, file_name, label_list, align_list):
+        best_param_dic = {}
+        single_index = ['method', 'score']
+        for i, d in enumerate(self.correct_data, start=1):
+            if len(d.split('\t')[0].split(',')) == 1:
+                single_index.append(str(i))
+        single_result = [','.join(single_index)]
+
+        s_rate, _, _, _, s_result = self.label(label_list)
+        best_param_dic['normal'] = s_rate[-1]
+        single_result.append(s_result)
+
+        for i in range(1, 10 + 1, 2):
+            init_threshold = round(i * 0.1, 1)
+            s_rate, _, _, _, s_result = self.label_init(label_list, init_threshold)
+            key = 'init {}'.format(init_threshold)
+            best_param_dic[key] = s_rate[-1]
+            single_result.append(s_result)
+
+        if align_list:
+            for i in range(1, 10 + 1, 2):
+                weight = round(i * 0.1, 1)
+                s_rate, _, _, _, s_result = self.label_mix_align(label_list, align_list, weight)
+                key = 'mix {}'.format(weight)
+                best_param_dic[key] = s_rate[-1]
+                single_result.append(s_result)
+
+            for i in range(1, 10 + 1, 2):
+                weight = round(i * 0.1, 1)
+                for j in range(1, 10 + 1, 2):
+                    init_threshold = round(j * 0.1, 1)
+                    s_rate, _, _, _, s_result = self.label_mix_aligh_init(label_list, align_list, init_threshold, weight)
+                    key = 'init {} mix {}'.format(init_threshold, weight)
+                    best_param_dic[key] = s_rate[-1]
+                    single_result.append(s_result)
+
+        with open(file_name, 'w')as f:
+            [f.write(r + '\n') for r in single_result]
+
+        return best_param_dic
+
 
 def model_type(t):
     if t == 'l':
@@ -183,6 +262,7 @@ if __name__ == '__main__':
     correct = config[section]['test_src_file']
 
     label = []
+    align = []
     with open(model_name + '.label', 'r')as f:
         label_data = f.readlines()
     for line in label_data:
@@ -190,8 +270,8 @@ if __name__ == '__main__':
         score = np.array([float(l) for l in line.split()])
         label.append(score)
     is_align = os.path.isfile(model_name + '.align')
+
     if is_align:
-        align = []
         with open(model_name + '.align', 'r')as f:
             attn_data = f.readlines()
         for line in attn_data:
@@ -199,42 +279,23 @@ if __name__ == '__main__':
             score = np.array([float(l) for l in line.split()])
             align.append(score)
 
-    best_param_dic = {}
-
     evaluater = Evaluate(correct)
-    rank_list = evaluater.rank(label)
-    s_rate, s_count = evaluater.single(rank_list)
-    m_rate, m_count = evaluater.multiple(rank_list)
-    print('normal')
-    print('s: {} | {}'.format(' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
-    print('m: {} | {}'.format(' '.join(x for x in m_rate), ' '.join(x for x in m_count)))
-    best_param_dic['normal'] = s_rate[-1]
-    weight = 1.0
-    for i in range(1, 10 + 1):
-        label_threshold = round(i * 0.1, 1)
-        evaluater = Evaluate(correct, weight, label_threshold)
+    file_name = args[1][:-3] + 'E.s_res.csv'
+    best_param_dic = evaluater.param_search(file_name, label, align)
+    
+    print('Best parm')
+    for k, v in sorted(best_param_dic.items(), key=lambda x: x[1], reverse=True)[:1]:
+        print('{} {}'.format(k, v))
+        k = k.split(' ')
+        if len(k) == 1:
+            s_rate, s_count, m_rate, m_count, _ = evaluater.label(label)
+        elif len(k) == 2:
+            if k[0] == 'init':
+                s_rate, s_count, m_rate, m_count, _ = evaluater.label_init(label, float(k[1]))
+            else:
+                s_rate, s_count, m_rate, m_count, _ = evaluater.label_mix_align(label, align, float(k[1]))
+        else:
+            s_rate, s_count, m_rate, m_count, _ = evaluater.label_mix_aligh_init(label, align, float(k[1]), float(k[3]))
 
-        rank_list = evaluater.rank_init(label)
-        s_rate, s_count = evaluater.single(rank_list)
-        m_rate, m_count = evaluater.multiple(rank_list)
-        print('{} normal init'.format(label_threshold))
         print('s: {} | {}'.format(' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
         print('m: {} | {}'.format(' '.join(x for x in m_rate), ' '.join(x for x in m_count)))
-        key = 'l{},w{}'.format(label_threshold, weight)
-        best_param_dic[key] = s_rate[-1]
-        if is_align:
-            for j in range(1, 10 + 1):
-                weight = round(j * 0.1, 1)
-                evaluater = Evaluate(correct, weight, label_threshold)
-                rank_list = evaluater.rank_init_align(label, align)
-                s_rate, s_count = evaluater.single(rank_list)
-                m_rate, m_count = evaluater.multiple(rank_list)
-                print('{}, {} normal init align'.format(label_threshold, weight))
-                print('s: {} | {}'.format(' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
-                print('m: {} | {}'.format(' '.join(x for x in m_rate), ' '.join(x for x in m_count)))
-                key = 'l{},w{}'.format(label_threshold, weight)
-                best_param_dic[key] = s_rate[-1]
-
-    key = max(best_param_dic, key=(lambda x: best_param_dic[x]))
-    print('\nBest param: {} {}'.format(key, best_param_dic[key]))
-

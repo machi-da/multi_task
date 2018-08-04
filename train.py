@@ -16,7 +16,7 @@ import evaluate
 from model import Multi
 from model_reg import MultiReg
 
-# os.environ["CHAINER_TYPE_CHECK"] = "0"
+os.environ["CHAINER_TYPE_CHECK"] = "0"
 import chainer
 
 
@@ -64,12 +64,10 @@ def main():
     multi = True if args.model == 'multi' else False
     base_dir = config[section]['base_dir']
     dir_path_last = re.search(r'.*/(.*?)$', base_dir).group(1)
-    result = []
+
     if multi:
-        result.append('epoch,valid_loss,s,m,s_init,m_init,s_align,m_align')
         model_dir = './multi_{}_{}_c{}_{}/'.format(vocab_type, args.type, coefficient, dir_path_last)
     else:
-        result.append('epoch,valid_loss,s,m,s_init,m_init')
         model_dir = './nn_{}_{}_{}/'.format(vocab_type, args.type, dir_path_last)
     if not os.path.exists(model_dir):
         os.mkdir(model_dir)
@@ -86,7 +84,6 @@ def main():
     gradclip = float(config['Parameter']['gradclip'])
     vocab_size = int(config['Parameter']['vocab_size'])
     coefficient = float(config['Parameter']['coefficient'])
-    align_weight = float(config['Parameter']['align_weight'])
     """LOGGER"""
     logger = getLogger(__name__)
     logger.setLevel(logging.INFO)
@@ -154,7 +151,7 @@ def main():
     train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, sort=True, shuffle=True, reg=reg)
     # train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False, reg=reg)
     valid_iter = dataset.Iterator(valid_src_file, valid_trg_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False, reg=reg)
-    evaluater = evaluate.Evaluate(test_src_file, align_weight)
+    evaluater = evaluate.Evaluate(test_src_file)
     test_iter = dataset.Iterator(test_src_file, test_src_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False)
     """MODEL"""
     if reg:
@@ -175,6 +172,7 @@ def main():
     """TRAIN"""
     sum_loss = 0
     loss_dic = {}
+    result = ['epoch,valid_loss']
     for epoch in range(1, n_epoch + 1):
         for i, batch in enumerate(train_iter.generate(), start=1):
             try:
@@ -221,46 +219,31 @@ def main():
             for o, a in zip(output, align):
                 o = chainer.cuda.to_cpu(o)
                 outputs.append(trg_vocab.id2word(o))
-                alignments.append(a)
-        rank_list = evaluater.rank(labels)
-        s_rate, s_count = evaluater.single(rank_list)
-        m_rate, m_count = evaluater.multiple(rank_list)
-        logger.info('E{} ## normal'.format(epoch))
-        logger.info('E{} ## s: {} | {}'.format(epoch, ' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
-        logger.info('E{} ## m: {} | {}'.format(epoch, ' '.join(x for x in m_rate), ' '.join(x for x in m_count)))
-        rank_list = evaluater.rank_init(labels)
-        s_rate_i, s_count = evaluater.single(rank_list)
-        m_rate_i, m_count = evaluater.multiple(rank_list)
-        logger.info('E{} ## normal init'.format(epoch))
-        logger.info('E{} ## s: {} | {}'.format(epoch, ' '.join(x for x in s_rate_i), ' '.join(x for x in s_count)))
-        logger.info('E{} ## m: {} | {}'.format(epoch, ' '.join(x for x in m_rate_i), ' '.join(x for x in m_count)))
-        res = '{},{},{},{},{},{}'.format(epoch, valid_loss, s_rate[-1], m_rate[-1], s_rate_i[-1], m_rate_i[-1])
+                alignments.append(chainer.cuda.to_cpu(a))
+        file_name = model_dir + 'model_epoch_{}.s_res.csv'.format(epoch)
+        best_param_dic = evaluater.param_search(file_name, labels, alignments)
+
         if multi:
-            rank_list = evaluater.rank_init_align(labels, alignments)
-            s_rate_a, s_count = evaluater.single(rank_list)
-            m_rate_a, m_count = evaluater.multiple(rank_list)
-            logger.info('E{} ## normal init align'.format(epoch))
-            logger.info('E{} ## s: {} | {}'.format(epoch, ' '.join(x for x in s_rate_a), ' '.join(x for x in s_count)))
-            logger.info('E{} ## m: {} | {}'.format(epoch, ' '.join(x for x in m_rate_a), ' '.join(x for x in m_count)))
-            res = '{},{},{},{},{},{},{},{}'.format(epoch, valid_loss, s_rate[-1], m_rate[-1], s_rate_i[-1], m_rate_i[-1], s_rate_a[-1], m_rate_a[-1])
+            logger.info('E{} ## {}: {}, {}: {}, {}: {}'.format(epoch, 'normal', best_param_dic['normal'], 'init 0.7', best_param_dic['init 0.7'], 'mix 0.5', best_param_dic['mix 0.5']))
+        else:
+            logger.info('E{} ## {}: {}, {}: {}'.format(epoch, 'normal', best_param_dic['normal'], 'init 0.7', best_param_dic['init 0.7']))
 
         with open(model_dir + 'model_epoch_{}.label'.format(epoch), 'w')as f:
             [f.write('{}\n'.format(l)) for l in labels]
         if multi:
-
             with open(model_dir + 'model_epoch_{}.hypo'.format(epoch), 'w')as f:
                 [f.write(o + '\n') for o in outputs]
             with open(model_dir + 'model_epoch_{}.align'.format(epoch), 'w')as f:
                 [f.write('{}\n'.format(a)) for a in alignments]
 
-        result.append(res)
+        result.append('{},{}'.format(epoch, valid_loss))
 
     """MODEL SAVE"""
     best_epoch = min(loss_dic, key=(lambda x: loss_dic[x]))
     logger.info('best_epoch:{}'.format(best_epoch))
     chainer.serializers.save_npz(model_dir + 'best_model.npz', model)
 
-    with open(model_dir + 'result.csv', 'w')as f:
+    with open(model_dir + 'valid_loss.csv', 'w')as f:
         [f.write(r + '\n') for r in result]
 
 
