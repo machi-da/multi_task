@@ -97,8 +97,10 @@ class Evaluate:
         rank_list = []
         for label, d, align in zip(label_data, self.correct_data, align_list):
             label = weight * label + (1 - weight) * align
+            # label = weight + align
             correct = [int(num) - 1 for num in d.split('\t')[0].split(',')]
             rank = []
+            # threshold = init_threshold * weight * (1 / len(label))
             true_index = list(np.where(label >= init_threshold)[0])
             for _ in range(len(label)):
                 index = label.argmax()
@@ -198,13 +200,16 @@ class Evaluate:
         best_param_dic = {}
         single_index = ['method', 'score']
         for i, d in enumerate(self.correct_data, start=1):
-            if len(d.split('\t')[0].split(',')) == 1:
+            correct_label = d.split('\t')[0].split(',')
+            if len(correct_label) == 1 and correct_label[0] != '0':
                 single_index.append(str(i))
         single_result = [','.join(single_index)]
 
         s_rate, _, _, _, s_result = self.label(label_list)
-        best_param_dic['normal'] = s_rate[-1]
+        key = 'normal'
+        best_param_dic[key] = s_rate[-1]
         single_result.append(s_result)
+        # print('{}\t{}'.format(key, ' '.join(s_rate)))
 
         for i in range(1, 10 + 1, 2):
             init_threshold = round(i * 0.1, 1)
@@ -212,6 +217,7 @@ class Evaluate:
             key = 'init {}'.format(init_threshold)
             best_param_dic[key] = s_rate[-1]
             single_result.append(s_result)
+            # print('{}\t{}'.format(key, ' '.join(s_rate)))
 
         if align_list:
             for i in range(1, 10 + 1, 2):
@@ -220,6 +226,7 @@ class Evaluate:
                 key = 'mix {}'.format(weight)
                 best_param_dic[key] = s_rate[-1]
                 single_result.append(s_result)
+                # print('{}\t{}'.format(key, ' '.join(s_rate)))
 
             for i in range(1, 10 + 1, 2):
                 weight = round(i * 0.1, 1)
@@ -229,6 +236,7 @@ class Evaluate:
                     key = 'init {} mix {}'.format(init_threshold, weight)
                     best_param_dic[key] = s_rate[-1]
                     single_result.append(s_result)
+                    # print('{}\t{}'.format(key, ' '.join(s_rate)))
 
         with open(file_name, 'w')as f:
             [f.write(r + '\n') for r in single_result]
@@ -280,9 +288,9 @@ if __name__ == '__main__':
             align.append(score)
 
     evaluater = Evaluate(correct)
-    file_name = args[1][:-3] + 'E.s_res.csv'
+    file_name = args[1][:-4] + '.E.s_res.csv'
     best_param_dic = evaluater.param_search(file_name, label, align)
-    
+
     print('Best parm')
     for k, v in sorted(best_param_dic.items(), key=lambda x: x[1], reverse=True)[:1]:
         print('{} {}'.format(k, v))
