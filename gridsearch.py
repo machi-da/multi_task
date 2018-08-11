@@ -47,7 +47,7 @@ class GridSearch:
         return
 
     def save_log(self, file_name):
-        with open(file_name + '.grid', 'r')as f:
+        with open(file_name, 'r')as f:
             [f.write(r + '\n') for r in self.result_log]
         return
 
@@ -70,7 +70,7 @@ class GridSearch:
                 a_dev, a_test = self.split_dev_test(align, i)
 
             self.ev.correct_data = c_dev
-            best_param_dic = self.ev.param_search(file_name, l_dev, a_dev)
+            best_param_dic = self.ev.param_search(l_dev, a_dev)
             for k, v in sorted(best_param_dic.items(), key=lambda x: x[1], reverse=True)[:1]:
                 self.log('{} dev: {} {}'.format(i + 1, k, v))
                 self.ev.correct_data = c_test
@@ -124,4 +124,4 @@ if __name__ == '__main__':
 
     gs = GridSearch(correct)
     gs.split_data(label, align)
-    gs.save_log(model_name)
+    gs.save_log(model_name + '.grid')

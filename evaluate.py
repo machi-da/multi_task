@@ -12,6 +12,18 @@ class Evaluate:
         with open(correct_txt_file, 'r')as f:
             self.correct_data = f.readlines()
 
+        single_index = ['method', 'score']
+        for i, d in enumerate(self.correct_data, start=1):
+            correct_label = d.split('\t')[0].split(',')
+            if len(correct_label) == 1 and correct_label[0] != '0':
+                single_index.append(str(i))
+        self.single_result = [','.join(single_index)]
+
+    def save_single_result(self, file_name):
+        with open(file_name, 'w')as f:
+            [f.write(r + '\n') for r in self.single_result]
+        return
+
     def label(self, label_list):
         label_data = copy.deepcopy(label_list)
         rank_list = []
@@ -196,19 +208,13 @@ class Evaluate:
         count.append('{}/{}'.format(t_correct, t))
         return rate, count
 
-    def param_search(self, file_name, label_list, align_list):
+    def param_search(self, label_list, align_list):
         best_param_dic = {}
-        single_index = ['method', 'score']
-        for i, d in enumerate(self.correct_data, start=1):
-            correct_label = d.split('\t')[0].split(',')
-            if len(correct_label) == 1 and correct_label[0] != '0':
-                single_index.append(str(i))
-        single_result = [','.join(single_index)]
 
         s_rate, _, _, _, s_result = self.label(label_list)
         key = 'normal'
         best_param_dic[key] = s_rate[-1]
-        single_result.append(s_result)
+        self.single_result.append(s_result)
         # print('{}\t{}'.format(key, ' '.join(s_rate)))
 
         for i in range(1, 10 + 1, 2):
@@ -216,7 +222,7 @@ class Evaluate:
             s_rate, _, _, _, s_result = self.label_init(label_list, init_threshold)
             key = 'init {}'.format(init_threshold)
             best_param_dic[key] = s_rate[-1]
-            single_result.append(s_result)
+            self.single_result.append(s_result)
             # print('{}\t{}'.format(key, ' '.join(s_rate)))
 
         if align_list:
@@ -225,7 +231,7 @@ class Evaluate:
                 s_rate, _, _, _, s_result = self.label_mix_align(label_list, align_list, weight)
                 key = 'mix {}'.format(weight)
                 best_param_dic[key] = s_rate[-1]
-                single_result.append(s_result)
+                self.single_result.append(s_result)
                 # print('{}\t{}'.format(key, ' '.join(s_rate)))
 
             for i in range(1, 10 + 1, 2):
@@ -235,11 +241,8 @@ class Evaluate:
                     s_rate, _, _, _, s_result = self.label_mix_aligh_init(label_list, align_list, init_threshold, weight)
                     key = 'init {} mix {}'.format(init_threshold, weight)
                     best_param_dic[key] = s_rate[-1]
-                    single_result.append(s_result)
+                    self.single_result.append(s_result)
                     # print('{}\t{}'.format(key, ' '.join(s_rate)))
-
-        with open(file_name, 'w')as f:
-            [f.write(r + '\n') for r in single_result]
 
         return best_param_dic
 
@@ -288,8 +291,8 @@ if __name__ == '__main__':
             align.append(score)
 
     evaluater = Evaluate(correct)
-    file_name = args[1][:-4] + '.E.s_res.csv'
-    best_param_dic = evaluater.param_search(file_name, label, align)
+    best_param_dic = evaluater.param_search(label, align)
+    evaluater.save_single_result(args[1][:-4] + '.E.s_res.csv')
 
     print('Best parm')
     for k, v in sorted(best_param_dic.items(), key=lambda x: x[1], reverse=True)[:1]:
