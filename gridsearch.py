@@ -11,7 +11,7 @@ np.random.seed(1)
 
 
 class GridSearch:
-    def __init__(self, correct_txt_file, valid_num=5):
+    def __init__(self, correct_txt_file, valid_num=1):
         with open(correct_txt_file, 'r')as f:
             self.correct_data = f.readlines()
         self.valid_num = len(self.correct_data) // valid_num
@@ -21,6 +21,8 @@ class GridSearch:
 
     def slice(self, lit):
         valid_num = self.valid_num
+        if valid_num == 0:
+            return [lit]
         res = []
         for a in zip_longest(*[iter(lit)] * valid_num):
             res.append(list(a))
@@ -41,17 +43,11 @@ class GridSearch:
         shuffled_list = zip(*zipped)
         return shuffled_list
 
-    def log(self, log_text):
-        self.result_log.append(log_text)
-        print(log_text)
-        return
+    def split_data(self, label_list, align_list=None, detail_flag=False):
+        param = []
+        total = [0, 0, 0, 0, 0, 0, 0]
+        detail = []
 
-    def save_log(self, file_name):
-        with open(file_name, 'r')as f:
-            [f.write(r + '\n') for r in self.result_log]
-        return
-
-    def split_data(self, label_list, align_list=None):
         if align_list:
             c_data, l_data, a_data = self.shuffle_list(self.correct_data, label_list, align_list)
             align = self.slice(a_data)
@@ -60,8 +56,9 @@ class GridSearch:
         
         correct = self.slice(c_data)
         label = self.slice(l_data)
+        # print(correct)
+        # print(self.correct_data)
 
-        total = [0, 0, 0, 0, 0, 0, 0]
         for i in range(len(correct)):
             c_dev, c_test = self.split_dev_test(correct, i)
             l_dev, l_test = self.split_dev_test(label, i)
@@ -71,23 +68,33 @@ class GridSearch:
 
             self.ev.correct_data = c_dev
             best_param_dic = self.ev.param_search(l_dev, a_dev)
-            for k, v in sorted(best_param_dic.items(), key=lambda x: x[1], reverse=True)[:1]:
-                self.log('{} dev: {} {}'.format(i + 1, k, v))
-                self.ev.correct_data = c_test
-                k = k.split(' ')
-                if len(k) == 1:
-                    s_rate, s_count, m_rate, m_count, _ = self.ev.label(l_test)
-                elif len(k) == 2:
-                    if k[0] == 'init':
-                        s_rate, s_count, m_rate, m_count, _ = self.ev.label_init(l_test, float(k[1]))
-                    else:
-                        s_rate, s_count, m_rate, m_count, _ = self.ev.label_mix_align(l_test, a_test, float(k[1]))
+            k = max(best_param_dic, key=lambda x: best_param_dic[x])
+            v = best_param_dic[k]
+            param.append(k)
+            detail.append('{} dev: {} {}'.format(i + 1, k, v))
+            self.ev.correct_data = c_test
+            k = k.split(' ')
+            if len(k) == 1:
+                s_rate, s_count, m_rate, m_count = self.ev.label(l_test)
+            elif len(k) == 2:
+                if k[0] == 'init':
+                    s_rate, s_count, m_rate, m_count = self.ev.label_init(l_test, float(k[1]))
                 else:
-                    s_rate, s_count, m_rate, m_count, _ = self.ev.label_mix_aligh_init(l_test, a_test, float(k[1]), float(k[3]))
-                self.log(' test: {}'.format(' '.join(s_rate)))
-                total = [x + float(y) for x, y in zip(total, s_rate)]
-        total = [str(round(t / len(correct), 3)) for t in total]
-        self.log(' '.join(total))
+                    s_rate, s_count, m_rate, m_count = self.ev.label_mix_align(l_test, a_test, float(k[1]))
+            else:
+                s_rate, s_count, m_rate, m_count = self.ev.label_mix_aligh_init(l_test, a_test, float(k[1]), float(k[3]))
+            detail.append(' test: {}'.format(' '.join(s_rate)))
+            total = [x + float(y) for x, y in zip(total, s_rate)]
+
+        total = ' '.join([str(round(t / len(correct), 3)) for t in total])
+        detail.append('total')
+        detail.append(total)
+        
+        if detail_flag:
+            for d in detail:
+                print(d)
+
+        return ['|'.join(param), total]
 
 
 if __name__ == '__main__':
@@ -123,5 +130,4 @@ if __name__ == '__main__':
             align.append(score)
 
     gs = GridSearch(correct)
-    gs.split_data(label, align)
-    gs.save_log(model_name + '.grid')
+    res = gs.split_data(label, align, detail_flag=True)

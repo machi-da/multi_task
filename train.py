@@ -8,14 +8,14 @@ from logging import getLogger
 import numpy as np
 import traceback
 
-np.set_printoptions(precision=3)
-
 import convert
 import dataset
 import evaluate
+import gridsearch
 from model import Multi
 from model_reg import MultiReg
 
+np.set_printoptions(precision=3)
 os.environ["CHAINER_TYPE_CHECK"] = "0"
 import chainer
 
@@ -152,6 +152,7 @@ def main():
     # train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False, reg=reg)
     valid_iter = dataset.Iterator(valid_src_file, valid_trg_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False, reg=reg)
     evaluater = evaluate.Evaluate(test_src_file)
+    gridsearcher = gridsearch.GridSearch(test_src_file)
     test_iter = dataset.Iterator(test_src_file, test_src_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False)
     """MODEL"""
     if reg:
@@ -220,13 +221,15 @@ def main():
                 o = chainer.cuda.to_cpu(o)
                 outputs.append(trg_vocab.id2word(o))
                 alignments.append(chainer.cuda.to_cpu(a))
-        file_name = model_dir + 'model_epoch_{}.s_res.csv'.format(epoch)
-        best_param_dic = evaluater.param_search(file_name, labels, alignments)
 
         if multi:
-            logger.info('E{} ## {}: {}, {}: {}, {}: {}'.format(epoch, 'normal', best_param_dic['normal'], 'init 0.7', best_param_dic['init 0.7'], 'mix 0.5', best_param_dic['mix 0.5']))
+            score = gridsearcher.split_data(labels, alignments)
+            logger.info('E{} ## {}'.format(epoch, score[0]))
+            logger.info('E{} ## {}'.format(epoch, score[1]))
         else:
-            logger.info('E{} ## {}: {}, {}: {}'.format(epoch, 'normal', best_param_dic['normal'], 'init 0.7', best_param_dic['init 0.7']))
+            s_rate, _, _, _ = evaluater.label(labels)
+            s_rate_init, _, _, _ = evaluater.label_init(labels)
+            logger.info('E{} ## {}: {}, {}: {}'.format(epoch, 'normal', s_rate[-1], 'init 0.7', s_rate_init[-1]))
 
         with open(model_dir + 'model_epoch_{}.label'.format(epoch), 'w')as f:
             [f.write('{}\n'.format(l)) for l in labels]
