@@ -202,11 +202,13 @@ class MultiReg(chainer.Chain):
                 word = word.astype(self.xp.int32)
                 pre_word = word
                 if word == eos:
+                    # attn_score = attn_score[0]
                     attn_score = self.xp.sum(self.xp.array(attn_score, dtype=self.xp.float32), axis=0) / i
                     break
                 attn_score.append(alignment[0][0])
                 sentence.append(word)
             else:
+                # attn_score = attn_score[0]
                 attn_score = self.xp.sum(self.xp.array(attn_score, dtype=self.xp.float32), axis=0) / i
             sentences.append(self.xp.hstack(sentence[1:]))
             alignments.append(attn_score)

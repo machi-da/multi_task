@@ -11,7 +11,7 @@ np.random.seed(1)
 
 
 class GridSearch:
-    def __init__(self, correct_txt_file, valid_num=1):
+    def __init__(self, correct_txt_file, valid_num=5):
         with open(correct_txt_file, 'r')as f:
             self.correct_data = f.readlines()
         self.valid_num = len(self.correct_data) // valid_num
@@ -56,8 +56,6 @@ class GridSearch:
         
         correct = self.slice(c_data)
         label = self.slice(l_data)
-        # print(correct)
-        # print(self.correct_data)
 
         for i in range(len(correct)):
             c_dev, c_test = self.split_dev_test(correct, i)
@@ -110,6 +108,9 @@ if __name__ == '__main__':
     data_type = model_dir.split('_')[2]
     section = evaluate.model_type(data_type)
     correct = config[section]['test_src_file']
+
+    # model_name = sys.argv[1]
+    # correct = '/Users/machida/work/yahoo/util/correct1-2.txt'
 
     label = []
     align = []

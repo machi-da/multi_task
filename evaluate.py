@@ -3,6 +3,7 @@ import configparser
 import re
 import os
 import glob
+import sys
 import copy
 import numpy as np
 
@@ -118,7 +119,7 @@ class Evaluate:
             # label = weight + align
             correct = [int(num) - 1 for num in d.split('\t')[0].split(',')]
             rank = []
-            # threshold = init_threshold * weight * (1 / len(label))
+            # threshold = init_threshold + (len(label) - 1) * 0.01
             true_index = list(np.where(label >= init_threshold)[0])
             for _ in range(len(label)):
                 index = label.argmax()
@@ -154,6 +155,7 @@ class Evaluate:
     def single(self, rank_list, method):
         score_dic = {2: [0, 0], 3: [0, 0], 4: [0, 0], 5: [0, 0], 6: [0, 0], 7: [0, 0]}
         result = [method]
+        # sentence_num = ['-', '-']
         for index, r in enumerate(rank_list, start=1):
             sent_num = len(r)
             # 正解ラベルの数: correct_num
@@ -166,13 +168,14 @@ class Evaluate:
             for i in range(count_num):
                 if r[i][1]:
                     correct += 1
-            if count_num == 1:
+            if count_num == 1 or count_num == 0:
                 score_dic[sent_num][1] += 1
                 if correct:
                     score_dic[sent_num][0] += 1
                     result.append('1')
                 else:
                     result.append('0')
+                # sentence_num.append(str(sent_num))
 
         t_correct, t = sum([v[0] for k, v in score_dic.items()]), sum([v[1] for k, v in score_dic.items()])
         for v in score_dic.values():
@@ -186,6 +189,8 @@ class Evaluate:
 
         result.insert(1, str(rate[-1]))
         result = ','.join(result)
+        # sentence_num = ','.join(sentence_num)
+        # self.single_result.append(sentence_num)
 
         return rate, count, result
 
@@ -242,7 +247,7 @@ class Evaluate:
 
             for i in range(1, 10):
                 weight = round(i * 0.1, 1)
-                for j in range(1, 10 + 1, 2):
+                for j in range(1, 10):
                     init_threshold = round(j * 0.1, 1)
                     s_rate, _, _, _ = self.label_mix_aligh_init(label_list, align_list, init_threshold, weight)
                     key = 'init {} mix {}'.format(init_threshold, weight)
@@ -288,6 +293,12 @@ if __name__ == '__main__':
     section = model_type(data_type)
     correct = config[section]['test_src_file']
 
+    # init = 0.5
+    # mix = 0.8
+
+    # model_name = sys.argv[1]
+    # correct = '/Users/machida/work/yahoo/util/correct1-2.txt'
+
     label = []
     align = []
     with open(model_name + '.label', 'r')as f:
@@ -310,14 +321,14 @@ if __name__ == '__main__':
     
     if init == -1:
         if mix == -1:
-            s_rate, s_count, m_rate, m_count = evaluater.label(label)
+            s_rate, s_count, m_rate, m_count = evaluater.label(label, save_s_result=True)
         else:
-            s_rate, s_count, m_rate, m_count = evaluater.label_mix_align(label, align, mix)
+            s_rate, s_count, m_rate, m_count = evaluater.label_mix_align(label, align, mix, save_s_result=True)
     else:
         if mix == -1:
-            s_rate, s_count, m_rate, m_count = evaluater.label_init(label, init)
+            s_rate, s_count, m_rate, m_count = evaluater.label_init(label, init, save_s_result=True)
         else:
-            s_rate, s_count, m_rate, m_count = evaluater.label_mix_aligh_init(label, align, init, mix)
+            s_rate, s_count, m_rate, m_count = evaluater.label_mix_aligh_init(label, align, init, mix, save_s_result=True)
     
     print('save single result: {}'.format(model_name + '.s_res.csv'))
     evaluater.save_single_result(model_name + '.s_res.csv')
