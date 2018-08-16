@@ -58,6 +58,17 @@ def load_with_label_reg(file_name):
     return label_lit, text
 
 
+def txt_to_list(file_name):
+    lit = []
+    with open(file_name, 'r')as f:
+        data = f.readlines()
+    for line in data:
+        line = line[1:-2]
+        score = np.array([float(l) for l in line.split()])
+        lit.append(score)
+    return lit
+
+
 def data_size(file_name):
     with open(file_name, 'r')as f:
         size = sum([1 for _ in f.readlines()])
@@ -76,10 +87,9 @@ def save_pickle(file_name, data):
 
 
 class VocabNormal:
-    def __init__(self, reg=False):
+    def __init__(self):
         self.vocab = None
         self.reverse_vocab = None
-        self.reg = reg
 
     def build(self, file_name, include_label, initial_vocab, vocab_size, freq=0):
         self.vocab = self._build_vocab(file_name, include_label, initial_vocab, vocab_size, freq)
@@ -90,10 +100,7 @@ class VocabNormal:
         words = []
 
         if with_label:
-            if self.reg:
-                _, documents = load_with_label_reg(file_name)
-            else:
-                _, documents = load_with_label(file_name)
+            _, documents = load_with_label_reg(file_name)
 
             for i, doc in enumerate(documents):
                 for sentence in doc:
@@ -191,11 +198,8 @@ class VocabSubword:
 
 
 class Iterator:
-    def __init__(self, src_file, trg_file, src_vocab, trg_vocab, batch_size, sort=True, shuffle=True, reg=False):
-        if reg:
-            self.label, self.src = load_with_label_reg(src_file)
-        else:
-            self.label, self.src = load_with_label(src_file)
+    def __init__(self, src_file, trg_file, src_vocab, trg_vocab, batch_size, sort=True, shuffle=True):
+        self.label, self.src = load_with_label_reg(src_file)
         self.trg = load(trg_file)
 
         self.src_vocab = src_vocab

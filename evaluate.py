@@ -116,10 +116,10 @@ class Evaluate:
         rank_list = []
         for label, d, align in zip(label_data, self.correct_data, align_list):
             label = weight * label + (1 - weight) * align
-            # label = weight + align
+            # label = label * align
             correct = [int(num) - 1 for num in d.split('\t')[0].split(',')]
             rank = []
-            # threshold = init_threshold + (len(label) - 1) * 0.01
+            # threshold = init_threshold + (len(label) - 1)
             true_index = list(np.where(label >= init_threshold)[0])
             for _ in range(len(label)):
                 index = label.argmax()
@@ -257,17 +257,6 @@ class Evaluate:
         return best_param_dic
 
 
-def model_type(t):
-    if t == 'l':
-        return 'Local'
-    elif t == 'lr':
-        return 'Local_Reg'
-    elif t == 's':
-        return 'Server'
-    else:
-        return 'Server_Reg'
-
-
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('model_name')
@@ -289,12 +278,8 @@ if __name__ == '__main__':
     config = configparser.ConfigParser()
     config.read(config_file)
 
-    data_type = model_dir.split('_')[2]
-    section = model_type(data_type)
-    correct = config[section]['test_src_file']
-
-    # init = 0.5
-    # mix = 0.8
+    data_path = 'local' if model_dir.split('_')[2] == 'l' else 'server'
+    correct = config[data_path]['test_src_file']
 
     # model_name = sys.argv[1]
     # correct = '/Users/machida/work/yahoo/util/correct1-2.txt'

@@ -105,9 +105,8 @@ if __name__ == '__main__':
     config = configparser.ConfigParser()
     config.read(config_file)
 
-    data_type = model_dir.split('_')[2]
-    section = evaluate.model_type(data_type)
-    correct = config[section]['test_src_file']
+    data_path = 'local' if model_dir.split('_')[2] == 'l' else 'server'
+    correct = config[data_path]['test_src_file']
 
     # model_name = sys.argv[1]
     # correct = '/Users/machida/work/yahoo/util/correct1-2.txt'

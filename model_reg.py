@@ -117,9 +117,9 @@ class LabelClassifier(chainer.Chain):
         return xs_proj
 
 
-class MultiReg(chainer.Chain):
-    def __init__(self, src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout, coefficient, multi=False):
-        super(MultiReg, self).__init__()
+class Multi(chainer.Chain):
+    def __init__(self, src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout, coefficient):
+        super(Multi, self).__init__()
         with self.init_scope():
             self.wordEnc = WordEncoder(src_vocab_size, embed_size, hidden_size, dropout)
             self.sentEnc = SentEncoder(hidden_size, dropout)
@@ -127,7 +127,6 @@ class MultiReg(chainer.Chain):
             self.labelClassifier = LabelClassifier(class_size, hidden_size, dropout)
         self.lossfun = F.softmax_cross_entropy
         self.coefficient = coefficient
-        self.multi = multi
 
     def __call__(self, sources, targets_sos, targets_eos, label_gold):
         coe = self.coefficient
@@ -141,15 +140,13 @@ class MultiReg(chainer.Chain):
         concat_label_proj = F.concat(F.concat(label_proj, axis=0), axis=0)
         concat_label_gold = F.concat(label_gold, axis=0)
         loss_label = F.mean_squared_error(concat_label_proj, concat_label_gold)
-        loss = loss_label
 
-        if self.multi:
-            targets_eos = F.pad_sequence(targets_eos, length=None, padding=0)
-            concat_word_ys = F.concat(word_ys, axis=0)
-            concat_word_ys_gold = F.concat(targets_eos, axis=0)
-            loss_word = self.lossfun(concat_word_ys, concat_word_ys_gold, ignore_label=0)
-            # print(coe * loss_word, (1-coe) * loss_label)
-            loss = coe * loss_word + (1 - coe) * loss_label
+        targets_eos = F.pad_sequence(targets_eos, length=None, padding=0)
+        concat_word_ys = F.concat(word_ys, axis=0)
+        concat_word_ys_gold = F.concat(targets_eos, axis=0)
+        loss_word = self.lossfun(concat_word_ys, concat_word_ys_gold, ignore_label=0)
+        # print(coe * loss_word, (1-coe) * loss_label)
+        loss = coe * loss_word + (1 - coe) * loss_label
 
         return loss
 
@@ -181,12 +178,137 @@ class MultiReg(chainer.Chain):
         sentences = []
         label = []
         for l in label_proj:
-            # l = F.softmax(l.T).data[0]
             l = l.T.data[0]
             label.append(l)
 
-        if not self.multi:
-            return sentences, label, alignments
+        hs = F.transpose(hs, (1, 0, 2))
+        cs = F.transpose(cs, (1, 0, 2))
+        for h, c, y in zip(hs, cs, enc_ys):
+            h = F.reshape(h, (1, *h.shape))
+            c = F.reshape(c, (1, *c.shape))
+            pre_word = sos
+            sentence = [sos]
+            attn_score = []
+            for i in range(1, limit + 1):
+                h, c, word_ys, alignment = self.wordDec(h, c, [pre_word], [y])
+                word = self.xp.argmax(word_ys[0].data, axis=1)
+                word = word.astype(self.xp.int32)
+                pre_word = word
+                if word == eos:
+                    # attn_score = attn_score[0]
+                    attn_score = self.xp.sum(self.xp.array(attn_score, dtype=self.xp.float32), axis=0) / i
+                    break
+                attn_score.append(alignment[0][0])
+                sentence.append(word)
+            else:
+                # attn_score = attn_score[0]
+                attn_score = self.xp.sum(self.xp.array(attn_score, dtype=self.xp.float32), axis=0) / i
+            sentences.append(self.xp.hstack(sentence[1:]))
+            alignments.append(attn_score)
+
+        return sentences, label, alignments
+
+
+class Label(chainer.Chain):
+    def __init__(self, src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout):
+        super(Label, self).__init__()
+        with self.init_scope():
+            self.wordEnc = WordEncoder(src_vocab_size, embed_size, hidden_size, dropout)
+            self.sentEnc = SentEncoder(hidden_size, dropout)
+            self.wordDec = WordDecoder(trg_vocab_size, embed_size, hidden_size, dropout)
+            self.labelClassifier = LabelClassifier(class_size, hidden_size, dropout)
+        self.lossfun = F.softmax_cross_entropy
+
+    def __call__(self, sources, targets_sos, targets_eos, label_gold):
+        hs, cs, enc_ys = self.encode(sources)
+
+        label_proj = self.labelClassifier(enc_ys, hs)
+        concat_label_proj = F.concat(F.concat(label_proj, axis=0), axis=0)
+        concat_label_gold = F.concat(label_gold, axis=0)
+        loss = F.mean_squared_error(concat_label_proj, concat_label_gold)
+
+        return loss
+
+    def encode(self, sources):
+        sentences = []
+        split_num = []
+        sent_vectors = []
+
+        for source in sources:
+            split_num.append(len(source))
+            sentences.extend(source)
+
+        word_hy, _, _ = self.wordEnc(None, None, sentences)
+
+        start = 0
+        for num in split_num:
+            sent_vectors.append(word_hy[start:start + num])
+            start += num
+
+        sent_hy, sent_cy, sent_ys = self.sentEnc(None, None, sent_vectors)
+
+        return sent_hy, sent_cy, sent_vectors
+
+    def predict(self, sources, sos, eos, limit=80):
+        hs, cs, enc_ys = self.encode(sources)
+        label_proj = self.labelClassifier(enc_ys, hs)
+
+        alignments = []
+        sentences = []
+        label = []
+        for l in label_proj:
+            l = l.T.data[0]
+            label.append(l)
+
+        return sentences, label, alignments
+
+
+class EncoderDecoder(chainer.Chain):
+    def __init__(self, src_vocab_size, trg_vocab_size, embed_size, hidden_size, dropout):
+        super(EncoderDecoder, self).__init__()
+        with self.init_scope():
+            self.wordEnc = WordEncoder(src_vocab_size, embed_size, hidden_size, dropout)
+            self.sentEnc = SentEncoder(hidden_size, dropout)
+            self.wordDec = WordDecoder(trg_vocab_size, embed_size, hidden_size, dropout)
+        self.lossfun = F.softmax_cross_entropy
+
+    def __call__(self, sources, targets_sos, targets_eos, label_gold):
+        hs, cs, enc_ys = self.encode(sources)
+        word_hs, word_cs, word_ys, alignment = self.wordDec(hs, cs, targets_sos, enc_ys)
+
+        targets_eos = F.pad_sequence(targets_eos, length=None, padding=0)
+        concat_word_ys = F.concat(word_ys, axis=0)
+        concat_word_ys_gold = F.concat(targets_eos, axis=0)
+        loss = self.lossfun(concat_word_ys, concat_word_ys_gold, ignore_label=0)
+
+        return loss
+
+    def encode(self, sources):
+        sentences = []
+        split_num = []
+        sent_vectors = []
+
+        for source in sources:
+            split_num.append(len(source))
+            sentences.extend(source)
+
+        word_hy, _, _ = self.wordEnc(None, None, sentences)
+
+        start = 0
+        for num in split_num:
+            sent_vectors.append(word_hy[start:start + num])
+            start += num
+
+        sent_hy, sent_cy, sent_ys = self.sentEnc(None, None, sent_vectors)
+
+        return sent_hy, sent_cy, sent_vectors
+
+    def predict(self, sources, sos, eos, limit=80):
+        hs, cs, enc_ys = self.encode(sources)
+
+        alignments = []
+        sentences = []
+        label = []
 
         hs = F.transpose(hs, (1, 0, 2))
         cs = F.transpose(cs, (1, 0, 2))

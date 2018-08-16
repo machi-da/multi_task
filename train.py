@@ -12,11 +12,10 @@ import convert
 import dataset
 import evaluate
 import gridsearch
-from model import Multi
-from model_reg import MultiReg
+import model_reg
 
 np.set_printoptions(precision=3)
-os.environ["CHAINER_TYPE_CHECK"] = "0"
+os.environ['CHAINER_TYPE_CHECK'] = '0'
 import chainer
 
 
@@ -27,48 +26,37 @@ def parse_args():
     parser.add_argument('--epoch', '-e', type=int, default=20)
     parser.add_argument('--interval', '-i', type=int, default=100000)
     parser.add_argument('--gpu', '-g', type=int, default=-1)
-    parser.add_argument('--model', '-m', choices=['multi', 'nn'], default='multi')
+    parser.add_argument('--model', '-m', choices=['multi', 'label', 'encdec'], default='multi')
     parser.add_argument('--vocab', '-v', choices=['normal', 'subword'], default='normal')
-    parser.add_argument('--type', '-t', choices=['l', 'lr', 's', 'sr'], default='l')
+    parser.add_argument('--data_path', '-d', choices=['local', 'server'], default='local')
     args = parser.parse_args()
     return args
-
-
-def model_type(t):
-    if t == 'l':
-        return 'Local'
-    elif t == 'lr':
-        return 'Local_Reg'
-    elif t == 's':
-        return 'Server'
-    else:
-        return 'Server_Reg'
 
 
 def main():
     args = parse_args()
     config = configparser.ConfigParser()
     """ARGS DETAIL"""
-    gpu_id = args.gpu
-    n_epoch = args.epoch
-    batch_size = args.batch
-    interval = args.interval
-    reg = False if args.type == 'l' or args.type == 's' else True
-    vocab_type = args.vocab
-    section = model_type(args.type)
     config_file = args.config_file
-    config.read(config_file)
+    batch_size = args.batch
+    n_epoch = args.epoch
+    interval = args.interval
+    gpu_id = args.gpu
+    model_type = args.model
+    vocab_type = args.vocab
+    data_path = args.data_path
 
     """DIR PREPARE"""
+    config.read(config_file)
     coefficient = float(config['Parameter']['coefficient'])
-    multi = True if args.model == 'multi' else False
-    base_dir = config[section]['base_dir']
+    base_dir = config[data_path]['base_dir']
     dir_path_last = re.search(r'.*/(.*?)$', base_dir).group(1)
 
-    if multi:
-        model_dir = './multi_{}_{}_c{}_{}/'.format(vocab_type, args.type, coefficient, dir_path_last)
+    if model_type == 'multi':
+        model_dir = './{}_{}_{}_c{}_{}/'.format(model_type, vocab_type, data_path[0], coefficient, dir_path_last)
     else:
-        model_dir = './nn_{}_{}_{}/'.format(vocab_type, args.type, dir_path_last)
+        model_dir = './{}_{}_{}_{}/'.format(model_type, vocab_type, data_path[0], dir_path_last)
+
     if not os.path.exists(model_dir):
         os.mkdir(model_dir)
     shutil.copyfile(config_file, model_dir + config_file)
@@ -103,19 +91,21 @@ def main():
     logger.info('[Training start] logging to {}'.format(log_file))
 
     """DATASET"""
-    train_src_file = config[section]['train_src_file']
-    train_trg_file = config[section]['train_trg_file']
-    valid_src_file = config[section]['valid_src_file']
-    valid_trg_file = config[section]['valid_trg_file']
-    test_src_file = config[section]['test_src_file']
+    train_src_file = config[data_path]['train_src_file']
+    train_trg_file = config[data_path]['train_trg_file']
+    valid_src_file = config[data_path]['valid_src_file']
+    valid_trg_file = config[data_path]['valid_trg_file']
+    test_src_file = config[data_path]['test_src_file']
+    row_score_file = config[data_path]['row_score_file']
+    row_score = dataset.txt_to_list(row_score_file)
 
     train_data_size = dataset.data_size(train_src_file)
     valid_data_size = dataset.data_size(valid_src_file)
-    logger.info('train size: {0}, valid size: {1}'.format(train_data_size, valid_data_size))
+    logger.info('train size: {}, valid size: {}'.format(train_data_size, valid_data_size))
 
     if vocab_type == 'normal':
-        src_vocab = dataset.VocabNormal(reg)
-        trg_vocab = dataset.VocabNormal(reg)
+        src_vocab = dataset.VocabNormal()
+        trg_vocab = dataset.VocabNormal()
         if os.path.isfile(model_dir + 'src_vocab.normal.pkl') and os.path.isfile(model_dir + 'trg_vocab.normal.pkl'):
             src_vocab.load(model_dir + 'src_vocab.normal.pkl')
             trg_vocab.load(model_dir + 'trg_vocab.normal.pkl')
@@ -148,18 +138,20 @@ def main():
     trg_vocab_size = len(trg_vocab.vocab)
     logger.info('src_vocab size: {}, trg_vocab size: {}'.format(src_vocab_size, trg_vocab_size))
 
-    train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, sort=True, shuffle=True, reg=reg)
-    # train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False, reg=reg)
-    valid_iter = dataset.Iterator(valid_src_file, valid_trg_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False, reg=reg)
+    train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, sort=True, shuffle=True)
+    # train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False)
+    valid_iter = dataset.Iterator(valid_src_file, valid_trg_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False)
+    test_iter = dataset.Iterator(test_src_file, test_src_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False)
+
     evaluater = evaluate.Evaluate(test_src_file)
     gridsearcher = gridsearch.GridSearch(test_src_file)
-    test_iter = dataset.Iterator(test_src_file, test_src_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False)
     """MODEL"""
-    if reg:
-        class_size = 1
-        model = MultiReg(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, coefficient, multi=multi)
+    if model_type == 'multi':
+        model = model_reg.Multi(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, coefficient)
+    elif model_type == 'label':
+        model = model_reg.Label(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio)
     else:
-        model = Multi(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, coefficient, multi=multi)
+        model = model_reg.EncoderDecoder(src_vocab_size, trg_vocab_size, embed_size, hidden_size, dropout_ratio)
     """OPTIMIZER"""
     optimizer = chainer.optimizers.Adam()
     optimizer.setup(model)
@@ -206,6 +198,7 @@ def main():
                 valid_loss += optimizer.target(*batch).data
         logger.info('E{} ## val loss:{}'.format(epoch, valid_loss))
         loss_dic[epoch] = valid_loss
+        result.append('{},{}'.format(epoch, valid_loss))
 
         """TEST"""
         outputs = []
@@ -215,31 +208,39 @@ def main():
             batch = convert.convert(batch, gpu_id)
             with chainer.no_backprop_mode(), chainer.using_config('train', False):
                 output, label, align = model.predict(batch[0], sos, eos)
+            for o in output:
+                outputs.append(trg_vocab.id2word(chainer.cuda.to_cpu(o)))
             for l in label:
                 labels.append(chainer.cuda.to_cpu(l))
-            for o, a in zip(output, align):
-                o = chainer.cuda.to_cpu(o)
-                outputs.append(trg_vocab.id2word(o))
+            for a in align:
                 alignments.append(chainer.cuda.to_cpu(a))
 
-        if multi:
+        if model_type == 'multi':
             score = gridsearcher.split_data(labels, alignments)
             logger.info('E{} ## {}'.format(epoch, score[0]))
             logger.info('E{} ## {}'.format(epoch, score[1]))
-        else:
-            s_rate, _, _, _ = evaluater.label(labels)
-            s_rate_init, _, _, _ = evaluater.label_init(labels)
-            logger.info('E{} ## {}: {}, {}: {}'.format(epoch, 'normal', s_rate[-1], 'init 0.7', s_rate_init[-1]))
-
-        with open(model_dir + 'model_epoch_{}.label'.format(epoch), 'w')as f:
-            [f.write('{}\n'.format(l)) for l in labels]
-        if multi:
+            with open(model_dir + 'model_epoch_{}.label'.format(epoch), 'w')as f:
+                [f.write('{}\n'.format(l)) for l in labels]
             with open(model_dir + 'model_epoch_{}.hypo'.format(epoch), 'w')as f:
                 [f.write(o + '\n') for o in outputs]
             with open(model_dir + 'model_epoch_{}.align'.format(epoch), 'w')as f:
                 [f.write('{}\n'.format(a)) for a in alignments]
 
-        result.append('{},{}'.format(epoch, valid_loss))
+        elif model_type == 'label':
+            s_rate, _, _, _ = evaluater.label(labels)
+            s_rate_init, _, _, _ = evaluater.label_init(labels)
+            logger.info('E{} ## {}: {}, {}: {}'.format(epoch, 'normal', s_rate[-1], 'init 0.7', s_rate_init[-1]))
+            with open(model_dir + 'model_epoch_{}.label'.format(epoch), 'w')as f:
+                [f.write('{}\n'.format(l)) for l in labels]
+
+        else:
+            score = gridsearcher.split_data(row_score, alignments)
+            logger.info('E{} ## {}'.format(epoch, score[0]))
+            logger.info('E{} ## {}'.format(epoch, score[1]))
+            with open(model_dir + 'model_epoch_{}.hypo'.format(epoch), 'w')as f:
+                [f.write(o + '\n') for o in outputs]
+            with open(model_dir + 'model_epoch_{}.align'.format(epoch), 'w')as f:
+                [f.write('{}\n'.format(a)) for a in alignments]
 
     """MODEL SAVE"""
     best_epoch = min(loss_dic, key=(lambda x: loss_dic[x]))
