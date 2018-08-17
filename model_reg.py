@@ -5,11 +5,11 @@ from chainer import functions as F
 
 
 class WordEncoder(chainer.Chain):
-    def __init__(self, n_vocab, embed, hidden, dropout):
+    def __init__(self, n_vocab, embed, hidden, dropout, initialW):
         n_layers = 1
         super(WordEncoder, self).__init__()
         with self.init_scope():
-            self.embed = L.EmbedID(n_vocab, embed)
+            self.embed = L.EmbedID(n_vocab, embed, initialW=initialW)
             self.Nlstm = L.NStepBiLSTM(n_layers, embed, hidden, dropout)
         self.hidden = hidden
 
@@ -59,11 +59,11 @@ class SentEncoder(chainer.Chain):
 
 
 class WordDecoder(chainer.Chain):
-    def __init__(self, n_vocab, embed, hidden, dropout):
+    def __init__(self, n_vocab, embed, hidden, dropout, initialW):
         n_layers = 1
         super(WordDecoder, self).__init__()
         with self.init_scope():
-            self.embed = L.EmbedID(n_vocab, embed)
+            self.embed = L.EmbedID(n_vocab, embed, initialW=initialW)
             self.Nlstm = L.NStepLSTM(n_layers, embed, hidden, dropout)
             self.W_c = L.Linear(2 * hidden, hidden)
             self.proj = L.Linear(hidden, n_vocab)
@@ -118,12 +118,12 @@ class LabelClassifier(chainer.Chain):
 
 
 class Multi(chainer.Chain):
-    def __init__(self, src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout, coefficient):
+    def __init__(self, src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout, coefficient, src_initialW, trg_initialW):
         super(Multi, self).__init__()
         with self.init_scope():
-            self.wordEnc = WordEncoder(src_vocab_size, embed_size, hidden_size, dropout)
+            self.wordEnc = WordEncoder(src_vocab_size, embed_size, hidden_size, dropout, src_initialW)
             self.sentEnc = SentEncoder(hidden_size, dropout)
-            self.wordDec = WordDecoder(trg_vocab_size, embed_size, hidden_size, dropout)
+            self.wordDec = WordDecoder(trg_vocab_size, embed_size, hidden_size, dropout, trg_initialW)
             self.labelClassifier = LabelClassifier(class_size, hidden_size, dropout)
         self.lossfun = F.softmax_cross_entropy
         self.coefficient = coefficient
@@ -210,12 +210,12 @@ class Multi(chainer.Chain):
 
 
 class Label(chainer.Chain):
-    def __init__(self, src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout):
+    def __init__(self, src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout, src_initialW, trg_initialW):
         super(Label, self).__init__()
         with self.init_scope():
-            self.wordEnc = WordEncoder(src_vocab_size, embed_size, hidden_size, dropout)
+            self.wordEnc = WordEncoder(src_vocab_size, embed_size, hidden_size, dropout, src_initialW)
             self.sentEnc = SentEncoder(hidden_size, dropout)
-            self.wordDec = WordDecoder(trg_vocab_size, embed_size, hidden_size, dropout)
+            self.wordDec = WordDecoder(trg_vocab_size, embed_size, hidden_size, dropout, trg_initialW)
             self.labelClassifier = LabelClassifier(class_size, hidden_size, dropout)
         self.lossfun = F.softmax_cross_entropy
 
@@ -264,12 +264,12 @@ class Label(chainer.Chain):
 
 
 class EncoderDecoder(chainer.Chain):
-    def __init__(self, src_vocab_size, trg_vocab_size, embed_size, hidden_size, dropout):
+    def __init__(self, src_vocab_size, trg_vocab_size, embed_size, hidden_size, dropout, src_initialW, trg_initialW):
         super(EncoderDecoder, self).__init__()
         with self.init_scope():
-            self.wordEnc = WordEncoder(src_vocab_size, embed_size, hidden_size, dropout)
+            self.wordEnc = WordEncoder(src_vocab_size, embed_size, hidden_size, dropout, src_initialW)
             self.sentEnc = SentEncoder(hidden_size, dropout)
-            self.wordDec = WordDecoder(trg_vocab_size, embed_size, hidden_size, dropout)
+            self.wordDec = WordDecoder(trg_vocab_size, embed_size, hidden_size, dropout, trg_initialW)
         self.lossfun = F.softmax_cross_entropy
 
     def __call__(self, sources, targets_sos, targets_eos, label_gold):

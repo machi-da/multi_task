@@ -13,6 +13,7 @@ import dataset
 import evaluate
 import gridsearch
 import model_reg
+import word2vec
 
 np.set_printoptions(precision=3)
 os.environ['CHAINER_TYPE_CHECK'] = '0'
@@ -28,6 +29,7 @@ def parse_args():
     parser.add_argument('--gpu', '-g', type=int, default=-1)
     parser.add_argument('--model', '-m', choices=['multi', 'label', 'encdec'], default='multi')
     parser.add_argument('--vocab', '-v', choices=['normal', 'subword'], default='normal')
+    parser.add_argument('--pretrain', action='store_true')
     parser.add_argument('--data_path', '-d', choices=['local', 'server'], default='local')
     args = parser.parse_args()
     return args
@@ -44,6 +46,7 @@ def main():
     gpu_id = args.gpu
     model_type = args.model
     vocab_type = args.vocab
+    pretrain = args.pretrain
     data_path = args.data_path
 
     """DIR PREPARE"""
@@ -52,10 +55,13 @@ def main():
     base_dir = config[data_path]['base_dir']
     dir_path_last = re.search(r'.*/(.*?)$', base_dir).group(1)
 
+    vocab_name = vocab_type
+    if pretrain:
+        vocab_name = 'p' + vocab_name
     if model_type == 'multi':
-        model_dir = './{}_{}_{}_c{}_{}/'.format(model_type, vocab_type, data_path[0], coefficient, dir_path_last)
+        model_dir = './{}_{}_{}_c{}_{}/'.format(model_type, vocab_name, data_path[0], coefficient, dir_path_last)
     else:
-        model_dir = './{}_{}_{}_{}/'.format(model_type, vocab_type, data_path[0], dir_path_last)
+        model_dir = './{}_{}_{}_{}/'.format(model_type, vocab_name, data_path[0], dir_path_last)
 
     if not os.path.exists(model_dir):
         os.mkdir(model_dir)
@@ -103,6 +109,9 @@ def main():
     valid_data_size = dataset.data_size(valid_src_file)
     logger.info('train size: {}, valid size: {}'.format(train_data_size, valid_data_size))
 
+    src_initialW = None
+    trg_initialW = None
+
     if vocab_type == 'normal':
         src_vocab = dataset.VocabNormal()
         trg_vocab = dataset.VocabNormal()
@@ -120,6 +129,12 @@ def main():
 
         sos = convert.convert_list(np.array([src_vocab.vocab['<s>']], dtype=np.int32), gpu_id)
         eos = convert.convert_list(np.array([src_vocab.vocab['</s>']], dtype=np.int32), gpu_id)
+
+        if pretrain:
+            embed_size = 200
+            hidden_size = 200
+            src_initialW = word2vec.make_initialW(src_vocab.vocab, embed_size)
+            trg_initialW = word2vec.make_initialW(trg_vocab.vocab, embed_size)
 
     elif vocab_type == 'subword':
         src_vocab = dataset.VocabSubword()
@@ -147,11 +162,11 @@ def main():
     gridsearcher = gridsearch.GridSearch(test_src_file)
     """MODEL"""
     if model_type == 'multi':
-        model = model_reg.Multi(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, coefficient)
+        model = model_reg.Multi(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, coefficient, src_initialW, trg_initialW)
     elif model_type == 'label':
-        model = model_reg.Label(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio)
+        model = model_reg.Label(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, src_initialW, trg_initialW)
     else:
-        model = model_reg.EncoderDecoder(src_vocab_size, trg_vocab_size, embed_size, hidden_size, dropout_ratio)
+        model = model_reg.EncoderDecoder(src_vocab_size, trg_vocab_size, embed_size, hidden_size, dropout_ratio, src_initialW, trg_initialW)
     """OPTIMIZER"""
     optimizer = chainer.optimizers.Adam()
     optimizer.setup(model)

@@ -273,16 +273,15 @@ if __name__ == '__main__':
     mix = args.mix
     model_dir = re.search(r'^(.*/)', model_name).group(1)
 
-    config_files = glob.glob(os.path.join(model_dir, '*.ini'))
-    config_file = config_files[0]
-    config = configparser.ConfigParser()
-    config.read(config_file)
+    # config_files = glob.glob(os.path.join(model_dir, '*.ini'))
+    # config_file = config_files[0]
+    # config = configparser.ConfigParser()
+    # config.read(config_file)
+    #
+    # data_path = 'local' if model_dir.split('_')[2] == 'l' else 'server'
+    # correct = config[data_path]['test_src_file']
 
-    data_path = 'local' if model_dir.split('_')[2] == 'l' else 'server'
-    correct = config[data_path]['test_src_file']
-
-    # model_name = sys.argv[1]
-    # correct = '/Users/machida/work/yahoo/util/correct1-2.txt'
+    correct = '/Users/machida/work/yahoo/util/correct1-2.txt'
 
     label = []
     align = []
