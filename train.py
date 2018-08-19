@@ -25,11 +25,12 @@ def parse_args():
     parser.add_argument('config_file')
     parser.add_argument('--batch', '-b', type=int, default=32)
     parser.add_argument('--epoch', '-e', type=int, default=20)
+    parser.add_argument('--pretrain_epoch', '-pe', type=int, default=5)
     parser.add_argument('--interval', '-i', type=int, default=100000)
     parser.add_argument('--gpu', '-g', type=int, default=-1)
-    parser.add_argument('--model', '-m', choices=['multi', 'label', 'encdec'], default='multi')
+    parser.add_argument('--model', '-m', choices=['multi', 'label', 'encdec', 'pretrain'], default='multi')
     parser.add_argument('--vocab', '-v', choices=['normal', 'subword'], default='normal')
-    parser.add_argument('--pretrain', action='store_true')
+    parser.add_argument('--pretrain_w2v', '-p', action='store_true')
     parser.add_argument('--data_path', '-d', choices=['local', 'server'], default='local')
     args = parser.parse_args()
     return args
@@ -42,11 +43,12 @@ def main():
     config_file = args.config_file
     batch_size = args.batch
     n_epoch = args.epoch
+    pretrain_epoch = args.pretrain_epoch
     interval = args.interval
     gpu_id = args.gpu
     model_type = args.model
     vocab_type = args.vocab
-    pretrain = args.pretrain
+    pretrain_w2v = args.pretrain_w2v
     data_path = args.data_path
 
     """DIR PREPARE"""
@@ -56,8 +58,9 @@ def main():
     dir_path_last = re.search(r'.*/(.*?)$', base_dir).group(1)
 
     vocab_name = vocab_type
-    if pretrain:
+    if pretrain_w2v:
         vocab_name = 'p' + vocab_name
+
     if model_type == 'multi':
         model_dir = './{}_{}_{}_c{}_{}/'.format(model_type, vocab_name, data_path[0], coefficient, dir_path_last)
     else:
@@ -130,7 +133,7 @@ def main():
         sos = convert.convert_list(np.array([src_vocab.vocab['<s>']], dtype=np.int32), gpu_id)
         eos = convert.convert_list(np.array([src_vocab.vocab['</s>']], dtype=np.int32), gpu_id)
 
-        if pretrain:
+        if pretrain_w2v:
             embed_size = 200
             hidden_size = 200
             src_initialW = word2vec.make_initialW(src_vocab.vocab, embed_size)
@@ -163,7 +166,7 @@ def main():
     """MODEL"""
     if model_type == 'multi':
         model = model_reg.Multi(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, coefficient, src_initialW, trg_initialW)
-    elif model_type == 'label':
+    elif model_type in ['label', 'pretrain']:
         model = model_reg.Label(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, src_initialW, trg_initialW)
     else:
         model = model_reg.EncoderDecoder(src_vocab_size, trg_vocab_size, embed_size, hidden_size, dropout_ratio, src_initialW, trg_initialW)
@@ -177,6 +180,52 @@ def main():
         logger.info('Use GPU')
         chainer.cuda.get_device_from_id(gpu_id).use()
         model.to_gpu()
+
+    """PRETRAIN"""
+    if model_type == 'pretrain':
+        logger.info('Pre-train start')
+        sum_loss = 0
+        pretrain_loss_dic = {}
+        for epoch in range(1, pretrain_epoch + 1):
+            for i, batch in enumerate(train_iter.generate(), start=1):
+                try:
+                    batch = convert.convert(batch, gpu_id)
+                    loss = model.pretrain(*batch)
+                    sum_loss += loss.data
+                    optimizer.target.cleargrads()
+                    loss.backward()
+                    optimizer.update()
+
+                    if i % interval == 0:
+                        logger.info('P{} ## iteration:{}, loss:{}'.format(epoch, i, sum_loss))
+                        sum_loss = 0
+
+                except Exception as e:
+                    logger.info(traceback.format_exc())
+                    logger.info('iteration: {}'.format(i))
+                    with open(model_dir + 'error_log.txt', 'a')as f:
+                        f.write('iteration_{}\n'.format(i))
+                        for b in batch[0]:
+                            for bb in b:
+                                f.write(src_vocab.id2word(chainer.cuda.to_cpu(bb)) + '\n')
+            chainer.serializers.save_npz(model_dir + 'p_model_epoch_{}.npz'.format(epoch), model)
+
+            """EVALUATE"""
+            valid_loss = 0
+            for batch in valid_iter.generate():
+                batch = convert.convert(batch, gpu_id)
+                with chainer.no_backprop_mode(), chainer.using_config('train', False):
+                    valid_loss += model.pretrain(*batch).data
+            logger.info('P{} ## val loss:{}'.format(epoch, valid_loss))
+            pretrain_loss_dic[epoch] = valid_loss
+
+        """MODEL SAVE & LOAD"""
+        best_epoch = min(pretrain_loss_dic, key=(lambda x: pretrain_loss_dic[x]))
+        logger.info('best_epoch:{}'.format(best_epoch))
+        chainer.serializers.save_npz(model_dir + 'p_best_model.npz', model)
+        chainer.serializers.load_npz(model_dir + 'p_best_model.npz', model)
+        logger.info('Pre-train finish')
+
     """TRAIN"""
     sum_loss = 0
     loss_dic = {}

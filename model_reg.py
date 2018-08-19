@@ -1,4 +1,3 @@
-import numpy as np
 import chainer
 from chainer import links as L
 from chainer import functions as F
@@ -133,9 +132,6 @@ class Multi(chainer.Chain):
         hs, cs, enc_ys = self.encode(sources)
         word_hs, word_cs, word_ys, alignment = self.wordDec(hs, cs, targets_sos, enc_ys)
 
-        # attn_score = []
-        # for i, x in enumerate(self.xp.sum(alignment, axis=1)):
-        #     attn_score.append(x / len(word_ys[i]))
         label_proj = self.labelClassifier(enc_ys, hs)
         concat_label_proj = F.concat(F.concat(label_proj, axis=0), axis=0)
         concat_label_gold = F.concat(label_gold, axis=0)
@@ -195,13 +191,13 @@ class Multi(chainer.Chain):
                 word = word.astype(self.xp.int32)
                 pre_word = word
                 if word == eos:
-                    # attn_score = attn_score[0]
+                    # attn_score = attn_score[0]  # 先頭の1語のみのattentionを取得する場合
                     attn_score = self.xp.sum(self.xp.array(attn_score, dtype=self.xp.float32), axis=0) / i
                     break
                 attn_score.append(alignment[0][0])
                 sentence.append(word)
             else:
-                # attn_score = attn_score[0]
+                # attn_score = attn_score[0]  # 先頭の1語のみのattentionを取得する場合
                 attn_score = self.xp.sum(self.xp.array(attn_score, dtype=self.xp.float32), axis=0) / i
             sentences.append(self.xp.hstack(sentence[1:]))
             alignments.append(attn_score)
@@ -226,6 +222,17 @@ class Label(chainer.Chain):
         concat_label_proj = F.concat(F.concat(label_proj, axis=0), axis=0)
         concat_label_gold = F.concat(label_gold, axis=0)
         loss = F.mean_squared_error(concat_label_proj, concat_label_gold)
+
+        return loss
+
+    def pretrain(self, sources, targets_sos, targets_eos, label_gold):
+        hs, cs, enc_ys = self.encode(sources)
+        word_hy, word_cy, word_ys, alignment = self.wordDec(hs, cs, targets_sos, enc_ys)
+
+        targets_eos = F.pad_sequence(targets_eos, length=None, padding=0)
+        concat_word_ys = F.concat(word_ys, axis=0)
+        concat_word_ys_gold = F.concat(targets_eos, axis=0)
+        loss = self.lossfun(concat_word_ys, concat_word_ys_gold, ignore_label=0)
 
         return loss
 
@@ -324,13 +331,13 @@ class EncoderDecoder(chainer.Chain):
                 word = word.astype(self.xp.int32)
                 pre_word = word
                 if word == eos:
-                    # attn_score = attn_score[0]
+                    # attn_score = attn_score[0]  # 先頭の1語のみのattentionを取得する場合
                     attn_score = self.xp.sum(self.xp.array(attn_score, dtype=self.xp.float32), axis=0) / i
                     break
                 attn_score.append(alignment[0][0])
                 sentence.append(word)
             else:
-                # attn_score = attn_score[0]
+                # attn_score = attn_score[0]  # 先頭の1語のみのattentionを取得する場合
                 attn_score = self.xp.sum(self.xp.array(attn_score, dtype=self.xp.float32), axis=0) / i
             sentences.append(self.xp.hstack(sentence[1:]))
             alignments.append(attn_score)
