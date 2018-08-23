@@ -13,6 +13,7 @@ import evaluate
 import gridsearch
 import model_reg
 
+np.set_printoptions(precision=3)
 os.environ["CHAINER_TYPE_CHECK"] = "0"
 import chainer
 
@@ -29,7 +30,7 @@ def parse_args():
 def main():
     args = parse_args()
     model_file = args.model_file
-    model_dir = re.search(r'.*/(.*?)$', model_file).group(1)
+    model_dir = re.search(r'(.*/)', model_file).group(1)
     """LOAD CONFIG FILE"""
     config_files = glob.glob(os.path.join(model_dir, '*.ini'))
     assert len(config_files) == 1, 'Put only one config file in the directory'
@@ -62,7 +63,7 @@ def main():
     """TEST DETAIL"""
     gpu_id = args.gpu
     batch_size = args.batch
-    data = model_dir.split('_')[2]
+    data = model_dir.split('/')[-2].split('_')
     
     model_type = data[0]
     if 'normal' in data[1]:
@@ -73,7 +74,7 @@ def main():
         data_path = 'server'
     else:
         data_path = 'local'
-    
+
     """DATASET"""
     test_src_file = config[data_path]['test_src_file']
     row_score_file = config[data_path]['row_score_file']
@@ -148,11 +149,11 @@ def main():
             [f.write('{}\n'.format(l)) for l in labels]
         with open(model_file + '.hypo.T', 'w')as f:
             [f.write(o + '\n') for o in outputs]
-        with open(model_file + '.align', 'w')as f:
+        with open(model_file + '.align.T', 'w')as f:
             [f.write('{}\n'.format(a)) for a in alignments]
 
     elif model_type in ['label', 'pretrain']:
-        score = gridsearcher.split_data(row_score, alignments)
+        score = gridsearcher.split_data(labels, alignments)
         logger.info('E{} ## {}'.format(epoch, score[0]))
         logger.info('E{} ## {}'.format(epoch, score[1]))
         with open(model_file + 'label.T', 'w')as f:
@@ -164,7 +165,7 @@ def main():
         logger.info('E{} ## {}'.format(epoch, score[1]))
         with open(model_file + '.hypo.T', 'w')as f:
             [f.write(o + '\n') for o in outputs]
-        with open(model_file + '.align', 'w')as f:
+        with open(model_file + '.align.T', 'w')as f:
             [f.write('{}\n'.format(a)) for a in alignments]
 
 

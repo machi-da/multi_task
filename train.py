@@ -53,6 +53,7 @@ def main():
 
     """DIR PREPARE"""
     config.read(config_file)
+    vocab_size = int(config['Parameter']['vocab_size'])
     coefficient = float(config['Parameter']['coefficient'])
     base_dir = config[data_path]['base_dir']
     dir_path_last = re.search(r'.*/(.*?)$', base_dir).group(1)
@@ -62,9 +63,9 @@ def main():
         vocab_name = 'p' + vocab_name
 
     if model_type == 'multi':
-        model_dir = './{}_{}_{}_c{}_{}/'.format(model_type, vocab_name, data_path[0], coefficient, dir_path_last)
+        model_dir = './{}_{}{}_{}_c{}_{}/'.format(model_type, vocab_name, vocab_size,data_path[0], coefficient, dir_path_last)
     else:
-        model_dir = './{}_{}_{}_{}/'.format(model_type, vocab_name, data_path[0], dir_path_last)
+        model_dir = './{}_{}{}_{}_{}/'.format(model_type, vocab_name, vocab_size, data_path[0], dir_path_last)
 
     if not os.path.exists(model_dir):
         os.mkdir(model_dir)
