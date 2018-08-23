@@ -290,7 +290,7 @@ def main():
             with open(model_dir + 'model_epoch_{}.align'.format(epoch), 'w')as f:
                 [f.write('{}\n'.format(a)) for a in alignments]
 
-        elif model_type == 'label':
+        elif model_type in ['label', 'pretrain']:
             s_rate, _, _, _ = evaluater.label(labels)
             s_rate_init, _, _, _ = evaluater.label_init(labels)
             logger.info('E{} ## {}: {}, {}: {}'.format(epoch, 'normal', s_rate[-1], 'init 0.7', s_rate_init[-1]))
@@ -308,7 +308,7 @@ def main():
 
     """MODEL SAVE"""
     best_epoch = min(loss_dic, key=(lambda x: loss_dic[x]))
-    logger.info('best_epoch:{}'.format(best_epoch))
+    logger.info('best_epoch:{} {}'.format(best_epoch, model_dir))
     chainer.serializers.save_npz(model_dir + 'best_model.npz', model)
 
     with open(model_dir + 'valid_loss.csv', 'w')as f:

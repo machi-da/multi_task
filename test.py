@@ -1,6 +1,7 @@
 import argparse
 import configparser
 import os
+import re
 import glob
 import logging
 import numpy as np
@@ -10,8 +11,7 @@ import convert
 
 import evaluate
 import gridsearch
-from model import Multi
-from model_reg import MultiReg
+import model_reg
 
 os.environ["CHAINER_TYPE_CHECK"] = "0"
 import chainer
@@ -19,28 +19,17 @@ import chainer
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('model_dir')
+    parser.add_argument('model_file')
     parser.add_argument('--batch', '-b', type=int, default=32)
     parser.add_argument('--gpu', '-g', type=int, default=-1)
-    parser.add_argument('--model_number', '-m', type=str, required=True)
     args = parser.parse_args()
     return args
 
 
-def model_type(t):
-    if t == 'l':
-        return 'Local'
-    elif t == 'lr':
-        return 'Local_Reg'
-    elif t == 's':
-        return 'Server'
-    else:
-        return 'Server_Reg'
-
-
 def main():
     args = parse_args()
-    model_dir = args.model_dir
+    model_file = args.model_file
+    model_dir = re.search(r'.*/(.*?)$', model_file).group(1)
     """LOAD CONFIG FILE"""
     config_files = glob.glob(os.path.join(model_dir, '*.ini'))
     assert len(config_files) == 1, 'Put only one config file in the directory'
@@ -73,28 +62,30 @@ def main():
     """TEST DETAIL"""
     gpu_id = args.gpu
     batch_size = args.batch
-    model_file = model_dir + 'model_epoch_{}.npz'.format(args.model_number)
-    data_type = model_dir.split('_')[2]
-    reg = False if data_type == 'l' or data_type == 's' else True
-    if 'multi' in model_dir:
-        multi = True
-    else:
-        multi = False
-    if 'normal' in model_dir:
+    data = model_dir.split('_')[2]
+    
+    model_type = data[0]
+    if 'normal' in data[1]:
         vocab_type = 'normal'
     else:
         vocab_type = 'subword'
+    if data[2] == 's':
+        data_path = 'server'
+    else:
+        data_path = 'local'
+    
     """DATASET"""
-    section = model_type(data_type)
-    test_src_file = config[section]['test_src_file']
+    test_src_file = config[data_path]['test_src_file']
+    row_score_file = config[data_path]['row_score_file']
+    row_score = dataset.txt_to_list(row_score_file)
 
     test_data_size = dataset.data_size(test_src_file)
     logger.info('test size: {}'.format(test_data_size))
     if vocab_type == 'normal':
-        src_vocab = dataset.VocabNormal(reg)
+        src_vocab = dataset.VocabNormal()
         src_vocab.load(model_dir + 'src_vocab.normal.pkl')
         src_vocab.set_reverse_vocab()
-        trg_vocab = dataset.VocabNormal(reg)
+        trg_vocab = dataset.VocabNormal()
         trg_vocab.load(model_dir + 'trg_vocab.normal.pkl')
         trg_vocab.set_reverse_vocab()
 
@@ -114,15 +105,18 @@ def main():
     trg_vocab_size = len(trg_vocab.vocab)
     logger.info('src_vocab size: {}, trg_vocab size: {}'.format(src_vocab_size, trg_vocab_size))
 
+    test_iter = dataset.Iterator(test_src_file, test_src_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False)
+
     evaluater = evaluate.Evaluate(test_src_file)
     gridsearcher = gridsearch.GridSearch(test_src_file)
-    test_iter = dataset.Iterator(test_src_file, test_src_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False)
     """MODEL"""
-    if reg:
-        class_size = 1
-        model = MultiReg(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, coefficient, multi=multi)
+    if model_type == 'multi':
+        model = model_reg.Multi(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, coefficient)
+    elif model_type in ['label', 'pretrain']:
+        model = model_reg.Label(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio)
     else:
-        model = Multi(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, coefficient, multi=multi)
+        model = model_reg.EncoderDecoder(src_vocab_size, trg_vocab_size, embed_size, hidden_size, dropout_ratio)
+
     chainer.serializers.load_npz(model_file, model)
     """GPU"""
     if gpu_id >= 0:
@@ -138,28 +132,39 @@ def main():
         batch = convert.convert(batch, gpu_id)
         with chainer.no_backprop_mode(), chainer.using_config('train', False):
             output, label, align = model.predict(batch[0], sos, eos)
+        for o in output:
+            outputs.append(trg_vocab.id2word(chainer.cuda.to_cpu(o)))
         for l in label:
             labels.append(chainer.cuda.to_cpu(l))
-        for o, a in zip(output, align):
-            o = chainer.cuda.to_cpu(o)
-            outputs.append(trg_vocab.id2word(o))
+        for a in align:
             alignments.append(chainer.cuda.to_cpu(a))
 
-    if multi:
+    model_file = model_file[:-3]
+    if model_type == 'multi':
         score = gridsearcher.split_data(labels, alignments)
         logger.info('E{} ## {}'.format(epoch, score[0]))
         logger.info('E{} ## {}'.format(epoch, score[1]))
-    else:
-        s_rate, _, _, _ = evaluater.label(labels)
-        s_rate_init, _, _, _ = evaluater.label_init(labels)
-        logger.info('E{} ## {}: {}, {}: {}'.format(epoch, 'normal', s_rate[-1], 'init 0.7', s_rate_init[-1]))
-
-    with open(model_file[:-3] + 'T.label', 'w')as f:
-        [f.write('{}\n'.format(l)) for l in labels]
-    if multi:
-        with open(model_file[:-3] + 'T.hypo', 'w')as f:
+        with open(model_file + 'label.T', 'w')as f:
+            [f.write('{}\n'.format(l)) for l in labels]
+        with open(model_file + '.hypo.T', 'w')as f:
             [f.write(o + '\n') for o in outputs]
-        with open(model_file[:-3] + 'T.align', 'w')as f:
+        with open(model_file + '.align', 'w')as f:
+            [f.write('{}\n'.format(a)) for a in alignments]
+
+    elif model_type in ['label', 'pretrain']:
+        score = gridsearcher.split_data(row_score, alignments)
+        logger.info('E{} ## {}'.format(epoch, score[0]))
+        logger.info('E{} ## {}'.format(epoch, score[1]))
+        with open(model_file + 'label.T', 'w')as f:
+            [f.write('{}\n'.format(l)) for l in labels]
+
+    else:
+        score = gridsearcher.split_data(row_score, alignments)
+        logger.info('E{} ## {}'.format(epoch, score[0]))
+        logger.info('E{} ## {}'.format(epoch, score[1]))
+        with open(model_file + '.hypo.T', 'w')as f:
+            [f.write(o + '\n') for o in outputs]
+        with open(model_file + '.align', 'w')as f:
             [f.write('{}\n'.format(a)) for a in alignments]
 
 

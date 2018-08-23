@@ -117,7 +117,7 @@ class LabelClassifier(chainer.Chain):
 
 
 class Multi(chainer.Chain):
-    def __init__(self, src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout, coefficient, src_initialW, trg_initialW):
+    def __init__(self, src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout, coefficient, src_initialW=None, trg_initialW=None):
         super(Multi, self).__init__()
         with self.init_scope():
             self.wordEnc = WordEncoder(src_vocab_size, embed_size, hidden_size, dropout, src_initialW)
@@ -206,7 +206,7 @@ class Multi(chainer.Chain):
 
 
 class Label(chainer.Chain):
-    def __init__(self, src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout, src_initialW, trg_initialW):
+    def __init__(self, src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout, src_initialW=None, trg_initialW=None):
         super(Label, self).__init__()
         with self.init_scope():
             self.wordEnc = WordEncoder(src_vocab_size, embed_size, hidden_size, dropout, src_initialW)
@@ -271,7 +271,7 @@ class Label(chainer.Chain):
 
 
 class EncoderDecoder(chainer.Chain):
-    def __init__(self, src_vocab_size, trg_vocab_size, embed_size, hidden_size, dropout, src_initialW, trg_initialW):
+    def __init__(self, src_vocab_size, trg_vocab_size, embed_size, hidden_size, dropout, src_initialW=None, trg_initialW=None):
         super(EncoderDecoder, self).__init__()
         with self.init_scope():
             self.wordEnc = WordEncoder(src_vocab_size, embed_size, hidden_size, dropout, src_initialW)
