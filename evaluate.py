@@ -7,6 +7,8 @@ import sys
 import copy
 import numpy as np
 
+import dataset
+
 
 class Evaluate:
     def __init__(self, correct_txt_file):
@@ -285,14 +287,18 @@ if __name__ == '__main__':
 
     label = []
     align = []
-    with open(model_name + '.label', 'r')as f:
-        label_data = f.readlines()
-    for line in label_data:
-        line = line[1:-2]
-        score = np.array([float(l) for l in line.split()])
-        label.append(score)
-    is_align = os.path.isfile(model_name + '.align')
+    if model_dir.split('_')[0] == 'encdec':
+        raw_data = config[data_path]['row_score_file']
+        label = dataset.txt_to_list(raw_data)
+    else:
+        with open(model_name + '.label', 'r')as f:
+            label_data = f.readlines()
+        for line in label_data:
+            line = line[1:-2]
+            score = np.array([float(l) for l in line.split()])
+            label.append(score)
 
+    is_align = os.path.isfile(model_name + '.align')
     if is_align:
         with open(model_name + '.align', 'r')as f:
             attn_data = f.readlines()

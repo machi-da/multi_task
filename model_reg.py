@@ -125,10 +125,16 @@ class Multi(chainer.Chain):
             self.wordDec = WordDecoder(trg_vocab_size, embed_size, hidden_size, dropout, trg_initialW)
             self.labelClassifier = LabelClassifier(class_size, hidden_size, dropout)
         self.lossfun = F.softmax_cross_entropy
-        self.coefficient = coefficient
+        if coefficient == -1:
+            self.w_word  = 1.0
+            self.w_label = 1.0
+        else:
+            self.w_word  = coefficient
+            self.w_label = 1.0 - coefficient
 
     def __call__(self, sources, targets_sos, targets_eos, label_gold):
-        coe = self.coefficient
+        w_word  = self.w_word
+        w_label = self.w_label
         hs, cs, enc_ys = self.encode(sources)
         word_hs, word_cs, word_ys, alignment = self.wordDec(hs, cs, targets_sos, enc_ys)
 
@@ -141,8 +147,7 @@ class Multi(chainer.Chain):
         concat_word_ys = F.concat(word_ys, axis=0)
         concat_word_ys_gold = F.concat(targets_eos, axis=0)
         loss_word = self.lossfun(concat_word_ys, concat_word_ys_gold, ignore_label=0)
-        # print(coe * loss_word, (1-coe) * loss_label)
-        loss = coe * loss_word + (1 - coe) * loss_label
+        loss = w_word * loss_word + w_label * loss_label
 
         return loss
 

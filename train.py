@@ -31,7 +31,7 @@ def parse_args():
     parser.add_argument('--model', '-m', choices=['multi', 'label', 'encdec', 'pretrain'], default='multi')
     parser.add_argument('--vocab', '-v', choices=['normal', 'subword'], default='normal')
     parser.add_argument('--pretrain_w2v', '-p', action='store_true')
-    parser.add_argument('--data_path', '-d', choices=['local', 'server'], default='local')
+    parser.add_argument('--data_path', '-d', choices=['local', 'server'], default='server')
     args = parser.parse_args()
     return args
 
