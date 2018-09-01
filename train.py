@@ -106,8 +106,8 @@ def main():
     valid_src_file = config[data_path]['valid_src_file']
     valid_trg_file = config[data_path]['valid_trg_file']
     test_src_file = config[data_path]['test_src_file']
-    row_score_file = config[data_path]['row_score_file']
-    row_score = dataset.txt_to_list(row_score_file)
+    raw_score_file = config[data_path]['row_score_file']
+    raw_score = dataset.txt_to_list(raw_score_file)
 
     train_data_size = dataset.data_size(train_src_file)
     valid_data_size = dataset.data_size(valid_src_file)
@@ -292,14 +292,14 @@ def main():
                 [f.write('{}\n'.format(a)) for a in alignments]
 
         elif model_type in ['label', 'pretrain']:
-            s_rate, _, _, _ = evaluater.label(labels)
-            s_rate_init, _, _, _ = evaluater.label_init(labels)
-            logger.info('E{} ## {}: {}, {}: {}'.format(epoch, 'normal', s_rate[-1], 'init 0.7', s_rate_init[-1]))
+            score = gridsearcher.split_data(labels)
+            logger.info('E{} ## {}'.format(epoch, score[0]))
+            logger.info('E{} ## {}'.format(epoch, score[1]))
             with open(model_dir + 'model_epoch_{}.label'.format(epoch), 'w')as f:
                 [f.write('{}\n'.format(l)) for l in labels]
 
         else:
-            score = gridsearcher.split_data(row_score, alignments)
+            score = gridsearcher.split_data(raw_score, alignments)
             logger.info('E{} ## {}'.format(epoch, score[0]))
             logger.info('E{} ## {}'.format(epoch, score[1]))
             with open(model_dir + 'model_epoch_{}.hypo'.format(epoch), 'w')as f:

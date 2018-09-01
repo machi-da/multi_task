@@ -3,7 +3,6 @@ import configparser
 import re
 import os
 import glob
-import sys
 import copy
 import numpy as np
 
@@ -20,14 +19,16 @@ class Evaluate:
             correct_label = d.split('\t')[0].split(',')
             if len(correct_label) == 1 and correct_label[0] != '0':
                 single_index.append(str(i))
-        self.single_result = [','.join(single_index)]
+        self.single_index = ','.join(single_index)
+        self.single_result = None
 
     def save_single_result(self, file_name):
+        print('save single result: {}'.format(file_name))
         with open(file_name, 'w')as f:
             [f.write(r + '\n') for r in self.single_result]
         return
 
-    def label(self, label_list, save_s_result=False):
+    def label(self, label_list):
         label_data = copy.deepcopy(label_list)
         rank_list = []
         for label, d in zip(label_data, self.correct_data):
@@ -44,13 +45,12 @@ class Evaluate:
 
         method = 'normal'
         s_rate, s_count, s_result = self.single(rank_list, method)
-        if save_s_result:
-            self.single_result.append(s_result)
+        self.single_result = [self.single_index, s_result]
         m_rate, m_count = self.multiple(rank_list)
 
         return s_rate, s_count, m_rate, m_count
 
-    def label_init(self, label_list, init_threshold=0.7, save_s_result=False):
+    def label_init(self, label_list, init_threshold=0.7):
         label_data = copy.deepcopy(label_list)
         rank_list = []
         for label, d in zip(label_data, self.correct_data):
@@ -82,13 +82,12 @@ class Evaluate:
 
         method = 'init_{}'.format(init_threshold)
         s_rate, s_count, s_result = self.single(rank_list, method)
-        if save_s_result:
-            self.single_result.append(s_result)
+        self.single_result = [self.single_index, s_result]
         m_rate, m_count = self.multiple(rank_list)
 
         return s_rate, s_count, m_rate, m_count
 
-    def label_mix_align(self, label_list, align_list, weight=0.5, save_s_result=False):
+    def label_mix_align(self, label_list, align_list, weight=0.5):
         label_data = copy.deepcopy(label_list)
         rank_list = []
         for label, d, align in zip(label_data, self.correct_data, align_list):
@@ -107,13 +106,12 @@ class Evaluate:
 
         method = 'mix_{}'.format(weight)
         s_rate, s_count, s_result = self.single(rank_list, method)
-        if save_s_result:
-            self.single_result.append(s_result)
+        self.single_result = [self.single_index, s_result]
         m_rate, m_count = self.multiple(rank_list)
 
         return s_rate, s_count, m_rate, m_count
 
-    def label_mix_aligh_init(self, label_list, align_list, init_threshold=0.7, weight=0.5, save_s_result=False):
+    def label_mix_aligh_init(self, label_list, align_list, init_threshold=0.7, weight=0.5):
         label_data = copy.deepcopy(label_list)
         rank_list = []
         for label, d, align in zip(label_data, self.correct_data, align_list):
@@ -148,8 +146,7 @@ class Evaluate:
 
         method = 'init_{} mix_{}'.format(init_threshold, weight)
         s_rate, s_count, s_result = self.single(rank_list, method)
-        if save_s_result:
-            self.single_result.append(s_result)
+        self.single_result = [self.single_index, s_result]
         m_rate, m_count = self.multiple(rank_list)
 
         return s_rate, s_count, m_rate, m_count
@@ -259,22 +256,24 @@ class Evaluate:
         return best_param_dic
 
 
-def parse_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('model_name')
-    parser.add_argument('--init', '-i', type=float, default=-1)
-    parser.add_argument('--mix', '-m', type=float, default=-1)
-    args = parser.parse_args()
-    return args
+def eval_param(model_name, label, align, correct, init=-1, mix=-1):
+    evaluater = Evaluate(correct)
+    if init == -1:
+        if mix == -1:
+            s_rate, s_count, m_rate, m_count = evaluater.label(label)
+        else:
+            s_rate, s_count, m_rate, m_count = evaluater.label_mix_align(label, align, mix)
+    else:
+        if mix == -1:
+            s_rate, s_count, m_rate, m_count = evaluater.label_init(label, init)
+        else:
+            s_rate, s_count, m_rate, m_count = evaluater.label_mix_aligh_init(label, align, init, mix)
+
+    evaluater.save_single_result(model_name + '.s_res.csv')
+    return s_rate, s_count, m_rate, m_count
 
 
-if __name__ == '__main__':
-    args = parse_args()
-    model_name = args.model_name[:-4]
-    init = args.init
-    mix = args.mix
-    model_dir = re.search(r'^(.*/)', model_name).group(1)
-
+def load_score_file(model_name, model_dir):
     config_files = glob.glob(os.path.join(model_dir, '*.ini'))
     config_file = config_files[0]
     config = configparser.ConfigParser()
@@ -307,20 +306,27 @@ if __name__ == '__main__':
             score = np.array([float(l) for l in line.split()])
             align.append(score)
 
-    evaluater = Evaluate(correct)
-    
-    if init == -1:
-        if mix == -1:
-            s_rate, s_count, m_rate, m_count = evaluater.label(label, save_s_result=True)
-        else:
-            s_rate, s_count, m_rate, m_count = evaluater.label_mix_align(label, align, mix, save_s_result=True)
-    else:
-        if mix == -1:
-            s_rate, s_count, m_rate, m_count = evaluater.label_init(label, init, save_s_result=True)
-        else:
-            s_rate, s_count, m_rate, m_count = evaluater.label_mix_aligh_init(label, align, init, mix, save_s_result=True)
-    
-    print('save single result: {}'.format(model_name + '.s_res.csv'))
-    evaluater.save_single_result(model_name + '.s_res.csv')
+    return label, align, correct
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('model_name')
+    parser.add_argument('--init', '-i', type=float, default=-1)
+    parser.add_argument('--mix', '-m', type=float, default=-1)
+    args = parser.parse_args()
+    return args
+
+
+if __name__ == '__main__':
+    args = parse_args()
+    model_name = args.model_name
+    init = args.init
+    mix = args.mix
+    model_dir = re.search(r'^(.*/)', model_name).group(1)
+
+    label, align, correct = load_score_file(model_name, model_dir)
+    s_rate, s_count, m_rate, m_count = eval_param(model_name, label, align, correct, init, mix)
+
     print('s: {} | {}'.format(' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
-    print('m: {} | {}'.format(' '.join(x for x in m_rate), ' '.join(x for x in m_count)))
+    # print('m: {} | {}'.format(' '.join(x for x in m_rate), ' '.join(x for x in m_count)))

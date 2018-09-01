@@ -1,10 +1,8 @@
-import configparser
 import sys
 import re
-import glob
-import os
 import evaluate
 from itertools import zip_longest
+from collections import Counter
 import numpy as np
 
 np.random.seed(1)
@@ -85,9 +83,8 @@ class GridSearch:
             total = [x + float(y) for x, y in zip(total, s_rate)]
 
         total = ' '.join([str(round(t / len(correct), 3)) for t in total])
-        detail.append('total')
-        detail.append(total)
-        
+        detail.append('total: {}'.format(total))
+
         if detail_flag:
             for d in detail:
                 print(d)
@@ -95,38 +92,42 @@ class GridSearch:
         return ['|'.join(param), total]
 
 
+def parse_param(param):
+    init = -1
+    mix  = -1
+    param = param.split(' ')
+    # normal
+    if len(param) == 1:
+        return init, mix
+    # init or mix
+    if len(param) == 2:
+        if param[0] == 'init':
+            init = float(param[1])
+            return init, mix
+        elif param[0] == 'mix':
+            mix = float(param[1])
+            return init, mix
+    # init and mix
+    init = float(param[1])
+    mix = float(param[3])
+
+    return init, mix
+
+
 if __name__ == '__main__':
     args = sys.argv
-    model_name = args[1][:-4]
+    model_name = args[1]
     model_dir = re.search(r'^(.*/)', args[1]).group(1)
 
-    config_files = glob.glob(os.path.join(model_dir, '*.ini'))
-    config_file = config_files[0]
-    config = configparser.ConfigParser()
-    config.read(config_file)
-
-    data_path = 'local' if model_dir.split('_')[2] == 'l' else 'server'
-    correct = config[data_path]['test_src_file']
-
-    # correct = '/Users/machida/work/yahoo/util/correct1-2.txt'
-
-    label = []
-    align = []
-    with open(model_name + '.label', 'r')as f:
-        label_data = f.readlines()
-    for line in label_data:
-        line = line[1:-2]
-        score = np.array([float(l) for l in line.split()])
-        label.append(score)
-    is_align = os.path.isfile(model_name + '.align')
-
-    if is_align:
-        with open(model_name + '.align', 'r')as f:
-            attn_data = f.readlines()
-        for line in attn_data:
-            line = line[1:-2]
-            score = np.array([float(l) for l in line.split()])
-            align.append(score)
+    label, align, correct = evaluate.load_score_file(model_name, model_dir)
 
     gs = GridSearch(correct)
     res = gs.split_data(label, align, detail_flag=True)
+    c_res = Counter(res)
+    param = max(c_res, key=lambda x: c_res[x])
+    init, mix = parse_param(param)
+
+    s_rate, s_count, m_rate, m_count = evaluate.eval_param(model_name, label, align, correct, init, mix)
+
+    print('s: {} | {}'.format(' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
+    # print('m: {} | {}'.format(' '.join(x for x in m_rate), ' '.join(x for x in m_count)))
