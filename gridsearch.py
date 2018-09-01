@@ -82,6 +82,7 @@ class GridSearch:
             detail.append(' test: {}'.format(' '.join(s_rate)))
             total = [x + float(y) for x, y in zip(total, s_rate)]
 
+        s_total = round(total[-1], 3)
         total = ' '.join([str(round(t / len(correct), 3)) for t in total])
         detail.append('total: {}'.format(total))
 
@@ -89,7 +90,8 @@ class GridSearch:
             for d in detail:
                 print(d)
 
-        return ['|'.join(param), total]
+        # パラメータ, スコア, スコアの合計
+        return ['|'.join(param), total, s_total]
 
 
 def parse_param(param):
@@ -123,11 +125,11 @@ if __name__ == '__main__':
 
     gs = GridSearch(correct)
     res = gs.split_data(label, align, detail_flag=True)
-    c_res = Counter(res)
+    c_res = Counter(res[0].split('|'))
     param = max(c_res, key=lambda x: c_res[x])
     init, mix = parse_param(param)
 
     s_rate, s_count, m_rate, m_count = evaluate.eval_param(model_name, label, align, correct, init, mix)
-
+    print(param)
     print('s: {} | {}'.format(' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
     # print('m: {} | {}'.format(' '.join(x for x in m_rate), ' '.join(x for x in m_count)))

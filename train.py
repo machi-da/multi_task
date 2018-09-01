@@ -230,6 +230,7 @@ def main():
     """TRAIN"""
     sum_loss = 0
     loss_dic = {}
+    accuracy_dic = {}
     result = ['epoch,valid_loss']
     for epoch in range(1, n_epoch + 1):
         for i, batch in enumerate(train_iter.generate(), start=1):
@@ -282,6 +283,7 @@ def main():
 
         if model_type == 'multi':
             score = gridsearcher.split_data(labels, alignments)
+            s_total = score[2]
             logger.info('E{} ## {}'.format(epoch, score[0]))
             logger.info('E{} ## {}'.format(epoch, score[1]))
             with open(model_dir + 'model_epoch_{}.label'.format(epoch), 'w')as f:
@@ -293,6 +295,7 @@ def main():
 
         elif model_type in ['label', 'pretrain']:
             score = gridsearcher.split_data(labels)
+            s_total = score[2]
             logger.info('E{} ## {}'.format(epoch, score[0]))
             logger.info('E{} ## {}'.format(epoch, score[1]))
             with open(model_dir + 'model_epoch_{}.label'.format(epoch), 'w')as f:
@@ -300,15 +303,18 @@ def main():
 
         else:
             score = gridsearcher.split_data(raw_score, alignments)
+            s_total = score[2]
             logger.info('E{} ## {}'.format(epoch, score[0]))
             logger.info('E{} ## {}'.format(epoch, score[1]))
             with open(model_dir + 'model_epoch_{}.hypo'.format(epoch), 'w')as f:
                 [f.write(o + '\n') for o in outputs]
             with open(model_dir + 'model_epoch_{}.align'.format(epoch), 'w')as f:
                 [f.write('{}\n'.format(a)) for a in alignments]
+        accuracy_dic[epoch] = s_total
 
     """MODEL SAVE"""
-    best_epoch = min(loss_dic, key=(lambda x: loss_dic[x]))
+    # best_epoch = min(loss_dic, key=(lambda x: loss_dic[x]))
+    best_epoch = max(accuracy_dic, key=(lambda x: accuracy_dic[x]))
     logger.info('best_epoch:{} {}'.format(best_epoch, model_dir))
     chainer.serializers.save_npz(model_dir + 'best_model.npz', model)
 
