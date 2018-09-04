@@ -82,7 +82,7 @@ class GridSearch:
             detail.append(' test: {}'.format(' '.join(s_rate)))
             total = [x + float(y) for x, y in zip(total, s_rate)]
 
-        s_total = round(total[-1], 3)
+        s_total = total[-1]
         total = ' '.join([str(round(t / len(correct), 3)) for t in total])
         detail.append('total: {}'.format(total))
 
@@ -116,13 +116,7 @@ def parse_param(param):
     return init, mix
 
 
-if __name__ == '__main__':
-    args = sys.argv
-    model_name = args[1]
-    model_dir = re.search(r'^(.*/)', args[1]).group(1)
-
-    label, align, correct = evaluate.load_score_file(model_name, model_dir)
-
+def main(model_name, label, align, correct):
     gs = GridSearch(correct)
     res = gs.split_data(label, align, detail_flag=True)
     c_res = Counter(res[0].split('|'))
@@ -133,3 +127,13 @@ if __name__ == '__main__':
     print(param)
     print('s: {} | {}'.format(' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
     # print('m: {} | {}'.format(' '.join(x for x in m_rate), ' '.join(x for x in m_count)))
+
+
+if __name__ == '__main__':
+    args = sys.argv
+    model_name = args[1]
+    model_dir = re.search(r'^(.*/)', args[1]).group(1)
+
+    label, align, correct = evaluate.load_score_file(model_name, model_dir)
+
+    main(label, align, correct)
