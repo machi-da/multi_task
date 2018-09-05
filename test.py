@@ -9,7 +9,6 @@ from logging import getLogger
 import dataset
 import convert
 
-import evaluate
 import gridsearch
 import model_reg
 
@@ -108,7 +107,6 @@ def main():
 
     test_iter = dataset.Iterator(test_src_file, test_src_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False)
 
-    evaluater = evaluate.Evaluate(test_src_file)
     gridsearcher = gridsearch.GridSearch(test_src_file)
     """MODEL"""
     if model_type == 'multi':
@@ -130,7 +128,6 @@ def main():
     labels = []
     alignments = []
     for i, batch in enumerate(test_iter.generate(), start=1):
-        batch = convert.convert(batch, gpu_id)
         with chainer.no_backprop_mode(), chainer.using_config('train', False):
             output, label, align = model.predict(batch[0], sos, eos)
         for o in output:

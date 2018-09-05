@@ -198,16 +198,17 @@ class VocabSubword:
 
 
 class Iterator:
-    def __init__(self, src_file, trg_file, src_vocab, trg_vocab, batch_size, sort=True, shuffle=True):
-        self.label, self.src = load_with_label_reg(src_file)
-        self.trg = load(trg_file)
+    def __init__(self, src_file, trg_file, src_vocab, trg_vocab, batch_size, gpu_id, sort=True, shuffle=True):
+        label, src = load_with_label_reg(src_file)
+        trg = load(trg_file)
 
         self.src_vocab = src_vocab
         self.trg_vocab = trg_vocab
-        self.batch_size = batch_size
 
         self.sort = sort
         self.shuffle = shuffle
+
+        self.batches = self._prepare_minibatch(src, trg, label, batch_size, gpu_id)
 
     def _convert(self, src, trg, label):
         src_id = [self.src_vocab.word2id(s) for s in src]
@@ -215,7 +216,9 @@ class Iterator:
         trg_eos = self.trg_vocab.word2id(trg, eos=True)
         return src_id, trg_sos, trg_eos, label
 
+    """
     def generate(self, batches_per_sort=10000):
+        gpu_id = self.gpu_id
         src, trg, label = self.src, self.trg, self.label
         batch_size = self.batch_size
 
@@ -228,8 +231,7 @@ class Iterator:
 
             if self.sort:
                 data = sorted(data, key=lambda x: len(x[0]), reverse=True)
-            batches = [data[b * batch_size: (b + 1) * batch_size]
-                       for b in range(batches_per_sort)]
+            batches = [convert.convert(data[b * batch_size: (b + 1) * batch_size], gpu_id) for b in range(batches_per_sort)]
 
             if self.shuffle:
                 random.shuffle(batches)
@@ -242,17 +244,39 @@ class Iterator:
         if len(data) != 0:
             if self.sort:
                 data = sorted(data, key=lambda x: len(x[0]), reverse=True)
-            batches = [data[b * batch_size: (b + 1) * batch_size]
-                       for b in range(int(len(data) / batch_size) + 1)]
+            batches = [convert.convert(data[b * batch_size: (b + 1) * batch_size], gpu_id) for b in range(int(len(data) / batch_size) + 1)]
 
             if self.shuffle:
                 random.shuffle(batches)
 
             for batch in batches:
                 # 補足: len(data) == batch_sizeのとき、batchesの最後に空listができてしまうための対策
-                if not batch:
+                # convertしてあるの関係で([], [], [], [])と返ってくるので、最初のリストが空かどうかで判定
+                if not batch[0]:
                     continue
                 yield batch
+    """
+
+    def _prepare_minibatch(self, src, trg, label, batch_size, gpu_id):
+        data = []
+        for s, t, l in zip(src, trg, label):
+            data.append(self._convert(s, t, l))
+
+        if self.sort:
+            data = sorted(data, key=lambda x: len(x[0]), reverse=True)
+        batches = [convert.convert(data[b * batch_size: (b + 1) * batch_size], gpu_id) for b in range(len(data) // batch_size)]
+        if len(data) % batch_size != 0:
+            batches.append(convert.convert(data[-(len(data) % batch_size + 1):]))
+
+        return batches
+
+    def generate(self):
+        batches = self.batches
+        if self.shuffle:
+            batches = random.sample(self.batches, len(self.batches))
+
+        for batch in batches:
+            yield batch
 
 
 if __name__ == '__main__':

@@ -2,15 +2,14 @@ import argparse
 import configparser
 import os
 import re
-import logging
 import shutil
+import logging
 from logging import getLogger
 import numpy as np
 import traceback
 
 import convert
 import dataset
-import evaluate
 import gridsearch
 import model_reg
 import word2vec
@@ -24,7 +23,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('config_file')
     parser.add_argument('--batch', '-b', type=int, default=32)
-    parser.add_argument('--epoch', '-e', type=int, default=20)
+    parser.add_argument('--epoch', '-e', type=int, default=10)
     parser.add_argument('--pretrain_epoch', '-pe', type=int, default=5)
     parser.add_argument('--interval', '-i', type=int, default=100000)
     parser.add_argument('--gpu', '-g', type=int, default=-1)
@@ -63,7 +62,7 @@ def main():
         vocab_name = 'p' + vocab_name
 
     if model_type == 'multi':
-        model_dir = './{}_{}{}_{}_c{}_{}/'.format(model_type, vocab_name, vocab_size,data_path[0], coefficient, dir_path_last)
+        model_dir = './{}_{}{}_{}_c{}_{}/'.format(model_type, vocab_name, vocab_size, data_path[0], coefficient, dir_path_last)
     else:
         model_dir = './{}_{}{}_{}_{}/'.format(model_type, vocab_name, vocab_size, data_path[0], dir_path_last)
 
@@ -98,6 +97,7 @@ def main():
     fh.setFormatter(formatter)
     logger.addHandler(fh)
 
+    logger.info(args)  # 引数を記録
     logger.info('[Training start] logging to {}'.format(log_file))
 
     """DATASET"""
@@ -106,7 +106,7 @@ def main():
     valid_src_file = config[data_path]['valid_src_file']
     valid_trg_file = config[data_path]['valid_trg_file']
     test_src_file = config[data_path]['test_src_file']
-    raw_score_file = config[data_path]['row_score_file']
+    raw_score_file = config[data_path]['raw_score_file']
     raw_score = dataset.txt_to_list(raw_score_file)
 
     train_data_size = dataset.data_size(train_src_file)
@@ -157,12 +157,11 @@ def main():
     trg_vocab_size = len(trg_vocab.vocab)
     logger.info('src_vocab size: {}, trg_vocab size: {}'.format(src_vocab_size, trg_vocab_size))
 
-    train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, sort=True, shuffle=True)
-    # train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False)
-    valid_iter = dataset.Iterator(valid_src_file, valid_trg_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False)
-    test_iter = dataset.Iterator(test_src_file, test_src_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False)
+    train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, gpu_id, sort=True, shuffle=True)
+    # train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
+    valid_iter = dataset.Iterator(valid_src_file, valid_trg_file, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
+    test_iter = dataset.Iterator(test_src_file, test_src_file, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
 
-    evaluater = evaluate.Evaluate(test_src_file)
     gridsearcher = gridsearch.GridSearch(test_src_file)
     """MODEL"""
     if model_type == 'multi':
@@ -190,7 +189,6 @@ def main():
         for epoch in range(1, pretrain_epoch + 1):
             for i, batch in enumerate(train_iter.generate(), start=1):
                 try:
-                    batch = convert.convert(batch, gpu_id)
                     loss = model.pretrain(*batch)
                     sum_loss += loss.data
                     optimizer.target.cleargrads()
@@ -202,13 +200,12 @@ def main():
                         sum_loss = 0
 
                 except Exception as e:
-                    logger.info(traceback.format_exc())
-                    logger.info('iteration: {}'.format(i))
+                    logger.info('E{} ## iteration: {}, {}'.format(epoch, i, e))
                     with open(model_dir + 'error_log.txt', 'a')as f:
-                        f.write('iteration_{}\n'.format(i))
+                        f.write('E{} ## iteration {}\n'.format(epoch, i))
+                        f.write(traceback.format_exc())
                         for b in batch[0]:
-                            for bb in b:
-                                f.write(src_vocab.id2word(chainer.cuda.to_cpu(bb)) + '\n')
+                            [f.write(src_vocab.id2word(chainer.cuda.to_cpu(bb)) + '\n') for bb in b]
             chainer.serializers.save_npz(model_dir + 'p_model_epoch_{}.npz'.format(epoch), model)
 
             """EVALUATE"""
@@ -235,7 +232,6 @@ def main():
     for epoch in range(1, n_epoch + 1):
         for i, batch in enumerate(train_iter.generate(), start=1):
             try:
-                batch = convert.convert(batch, gpu_id)
                 loss = optimizer.target(*batch)
                 sum_loss += loss.data
                 optimizer.target.cleargrads()
@@ -247,19 +243,17 @@ def main():
                     sum_loss = 0
 
             except Exception as e:
-                logger.info(traceback.format_exc())
-                logger.info('iteration: {}'.format(i))
+                logger.info('E{} ## iteration: {}, {}'.format(epoch, i, e))
                 with open(model_dir + 'error_log.txt', 'a')as f:
-                    f.write('iteration_{}\n'.format(i))
+                    f.write('E{} ## iteration {}\n'.format(epoch, i))
+                    f.write(traceback.format_exc())
                     for b in batch[0]:
-                        for bb in b:
-                            f.write(src_vocab.id2word(chainer.cuda.to_cpu(bb)) + '\n')
+                        [f.write(src_vocab.id2word(chainer.cuda.to_cpu(bb)) + '\n') for bb in b]
         chainer.serializers.save_npz(model_dir + 'model_epoch_{}.npz'.format(epoch), model)
 
         """EVALUATE"""
         valid_loss = 0
         for batch in valid_iter.generate():
-            batch = convert.convert(batch, gpu_id)
             with chainer.no_backprop_mode(), chainer.using_config('train', False):
                 valid_loss += optimizer.target(*batch).data
         logger.info('E{} ## val loss:{}'.format(epoch, valid_loss))
@@ -271,7 +265,6 @@ def main():
         labels = []
         alignments = []
         for i, batch in enumerate(test_iter.generate(), start=1):
-            batch = convert.convert(batch, gpu_id)
             with chainer.no_backprop_mode(), chainer.using_config('train', False):
                 output, label, align = model.predict(batch[0], sos, eos)
             for o in output:
@@ -282,10 +275,9 @@ def main():
                 alignments.append(chainer.cuda.to_cpu(a))
 
         if model_type == 'multi':
-            score = gridsearcher.split_data(labels, alignments)
-            s_total = score[2]
-            logger.info('E{} ## {}'.format(epoch, score[0]))
-            logger.info('E{} ## {}'.format(epoch, score[1]))
+            param, total, s_total, init, mix = gridsearcher.split_data(labels, alignments)
+            logger.info('E{} ## {}'.format(epoch, param))
+            logger.info('E{} ## {}'.format(epoch, total))
             with open(model_dir + 'model_epoch_{}.label'.format(epoch), 'w')as f:
                 [f.write('{}\n'.format(l)) for l in labels]
             with open(model_dir + 'model_epoch_{}.hypo'.format(epoch), 'w')as f:
@@ -294,18 +286,16 @@ def main():
                 [f.write('{}\n'.format(a)) for a in alignments]
 
         elif model_type in ['label', 'pretrain']:
-            score = gridsearcher.split_data(labels)
-            s_total = score[2]
-            logger.info('E{} ## {}'.format(epoch, score[0]))
-            logger.info('E{} ## {}'.format(epoch, score[1]))
+            param, total, s_total, init, mix = gridsearcher.split_data(labels)
+            logger.info('E{} ## {}'.format(epoch, param))
+            logger.info('E{} ## {}'.format(epoch, total))
             with open(model_dir + 'model_epoch_{}.label'.format(epoch), 'w')as f:
                 [f.write('{}\n'.format(l)) for l in labels]
 
         else:
-            score = gridsearcher.split_data(raw_score, alignments)
-            s_total = score[2]
-            logger.info('E{} ## {}'.format(epoch, score[0]))
-            logger.info('E{} ## {}'.format(epoch, score[1]))
+            param, total, s_total, init, mix = gridsearcher.split_data(raw_score, alignments)
+            logger.info('E{} ## {}'.format(epoch, param))
+            logger.info('E{} ## {}'.format(epoch, total))
             with open(model_dir + 'model_epoch_{}.hypo'.format(epoch), 'w')as f:
                 [f.write(o + '\n') for o in outputs]
             with open(model_dir + 'model_epoch_{}.align'.format(epoch), 'w')as f:

@@ -86,12 +86,16 @@ class GridSearch:
         total = ' '.join([str(round(t / len(correct), 3)) for t in total])
         detail.append('total: {}'.format(total))
 
+        c_param = Counter(param)
+        best_param = max(c_param, key=lambda x: c_param[x])
+        init, mix = parse_param(best_param)
+
         if detail_flag:
             for d in detail:
                 print(d)
 
         # パラメータ, スコア, スコアの合計
-        return ['|'.join(param), total, s_total]
+        return '|'.join(param), total, s_total, init, mix
 
 
 def parse_param(param):
@@ -118,13 +122,10 @@ def parse_param(param):
 
 def main(model_name, label, align, correct):
     gs = GridSearch(correct)
-    res = gs.split_data(label, align, detail_flag=True)
-    c_res = Counter(res[0].split('|'))
-    param = max(c_res, key=lambda x: c_res[x])
-    init, mix = parse_param(param)
+    param, total, s_total, init, mix = gs.split_data(label, align, detail_flag=True)
 
     s_rate, s_count, m_rate, m_count = evaluate.eval_param(model_name, label, align, correct, init, mix)
-    print(param)
+    print('init {}, mix {}'.format(init, mix))
     print('s: {} | {}'.format(' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
     # print('m: {} | {}'.format(' '.join(x for x in m_rate), ' '.join(x for x in m_count)))
 
@@ -136,4 +137,4 @@ if __name__ == '__main__':
 
     label, align, correct = evaluate.load_score_file(model_name, model_dir)
 
-    main(label, align, correct)
+    main(model_name, label, align, correct)
