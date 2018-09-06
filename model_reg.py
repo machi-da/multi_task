@@ -102,7 +102,8 @@ class LabelClassifier(chainer.Chain):
     def __init__(self, class_size, hidden, dropout):
         super(LabelClassifier, self).__init__()
         with self.init_scope():
-            self.proj = L.Linear(2 * hidden, class_size)
+            self.h1 = L.Linear(2 * hidden, hidden)
+            self.h2 = L.Linear(hidden, class_size)
         self.dropout = dropout
 
     def __call__(self, xs, doc_vec):
@@ -111,13 +112,15 @@ class LabelClassifier(chainer.Chain):
 
         # 各文ベクトルにdocumentベクトルをconcat
         # x:(batch_size, hidden_size), d:(,hidden_size)なので次元を合わせるためbroadcast_toでd:(batch_size, hidden_size)へ変換
-        xs_proj = [self.proj(F.dropout(F.concat((x, F.broadcast_to(d, x.shape)), axis=1), self.dropout)) for x, d in
-                   zip(xs, doc_vec)]
+        xs_proj = [self.h1(F.dropout(F.concat((x, F.broadcast_to(d, x.shape)), axis=1), self.dropout))
+                   for x, d in zip(xs, doc_vec)]
+        xs_proj = [self.h2(F.dropout(x, self.dropout)) for x in xs_proj]
         return xs_proj
 
 
 class Multi(chainer.Chain):
-    def __init__(self, src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout, coefficient, src_initialW=None, trg_initialW=None):
+    def __init__(self, src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout, coefficient,
+                 src_initialW=None, trg_initialW=None):
         super(Multi, self).__init__()
         with self.init_scope():
             self.wordEnc = WordEncoder(src_vocab_size, embed_size, hidden_size, dropout, src_initialW)
@@ -171,7 +174,7 @@ class Multi(chainer.Chain):
 
         return sent_hy, sent_cy, sent_vectors
 
-    def predict(self, sources, sos, eos, limit=80):
+    def predict(self, sources, sos, eos, limit=50):
         hs, cs, enc_ys = self.encode(sources)
         label_proj = self.labelClassifier(enc_ys, hs)
 
@@ -211,7 +214,8 @@ class Multi(chainer.Chain):
 
 
 class Label(chainer.Chain):
-    def __init__(self, src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout, src_initialW=None, trg_initialW=None):
+    def __init__(self, src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout,
+                 src_initialW=None, trg_initialW=None):
         super(Label, self).__init__()
         with self.init_scope():
             self.wordEnc = WordEncoder(src_vocab_size, embed_size, hidden_size, dropout, src_initialW)
@@ -261,7 +265,7 @@ class Label(chainer.Chain):
 
         return sent_hy, sent_cy, sent_vectors
 
-    def predict(self, sources, sos, eos, limit=80):
+    def predict(self, sources, sos, eos, limit=50):
         hs, cs, enc_ys = self.encode(sources)
         label_proj = self.labelClassifier(enc_ys, hs)
 
@@ -276,7 +280,8 @@ class Label(chainer.Chain):
 
 
 class EncoderDecoder(chainer.Chain):
-    def __init__(self, src_vocab_size, trg_vocab_size, embed_size, hidden_size, dropout, src_initialW=None, trg_initialW=None):
+    def __init__(self, src_vocab_size, trg_vocab_size, embed_size, hidden_size, dropout,
+                 src_initialW=None, trg_initialW=None):
         super(EncoderDecoder, self).__init__()
         with self.init_scope():
             self.wordEnc = WordEncoder(src_vocab_size, embed_size, hidden_size, dropout, src_initialW)
@@ -315,7 +320,7 @@ class EncoderDecoder(chainer.Chain):
 
         return sent_hy, sent_cy, sent_vectors
 
-    def predict(self, sources, sos, eos, limit=80):
+    def predict(self, sources, sos, eos, limit=50):
         hs, cs, enc_ys = self.encode(sources)
 
         alignments = []
