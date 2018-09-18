@@ -108,6 +108,8 @@ def main():
     test_src_file = config[data_path]['test_src_file']
     raw_score_file = config[data_path]['raw_score_file']
     raw_score = dataset.txt_to_list(raw_score_file)
+    src_w2v_file = config[data_path]['src_w2v_file']
+    trg_w2v_file = config[data_path]['trg_w2v_file']
 
     train_data_size = dataset.data_size(train_src_file)
     valid_data_size = dataset.data_size(valid_src_file)
@@ -135,10 +137,12 @@ def main():
         eos = convert.convert_list(np.array([src_vocab.vocab['</s>']], dtype=np.int32), gpu_id)
 
         if pretrain_w2v:
-            embed_size = 200
-            hidden_size = 200
-            src_initialW = word2vec.make_initialW(src_vocab.vocab, embed_size)
-            trg_initialW = word2vec.make_initialW(trg_vocab.vocab, embed_size)
+            logger.info('Initialize w2v embedding')
+            w2v = word2vec.Word2Vec()
+            src_initialW, vector_size = w2v.make_initialW(src_vocab.vocab, src_w2v_file)
+            trg_initialW, vector_size = w2v.make_initialW(trg_vocab.vocab, trg_w2v_file)
+            embed_size = vector_size
+            hidden_size = vector_size
 
     elif vocab_type == 'subword':
         src_vocab = dataset.VocabSubword()
