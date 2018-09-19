@@ -135,14 +135,16 @@ def main():
 
         sos = convert.convert_list(np.array([src_vocab.vocab['<s>']], dtype=np.int32), gpu_id)
         eos = convert.convert_list(np.array([src_vocab.vocab['</s>']], dtype=np.int32), gpu_id)
+        src_vocab_size = len(src_vocab.vocab)
+        trg_vocab_size = len(trg_vocab.vocab)
 
         if pretrain_w2v:
-            logger.info('Initialize w2v embedding')
             w2v = word2vec.Word2Vec()
-            src_initialW, vector_size = w2v.make_initialW(src_vocab.vocab, src_w2v_file)
-            trg_initialW, vector_size = w2v.make_initialW(trg_vocab.vocab, trg_w2v_file)
+            src_initialW, vector_size, src_match_word_count = w2v.make_initialW(src_vocab.vocab, src_w2v_file)
+            trg_initialW, vector_size, trg_match_word_count = w2v.make_initialW(trg_vocab.vocab, trg_w2v_file)
             embed_size = vector_size
             hidden_size = vector_size
+            logger.info('Initialize w2v embedding. Match: src {}/{}, trg {}/{}'.format(src_match_word_count, src_vocab_size, trg_match_word_count, trg_vocab_size))
 
     elif vocab_type == 'subword':
         src_vocab = dataset.VocabSubword()
@@ -156,9 +158,9 @@ def main():
 
         sos = convert.convert_list(np.array([src_vocab.vocab.PieceToId('<s>')], dtype=np.int32), gpu_id)
         eos = convert.convert_list(np.array([src_vocab.vocab.PieceToId('</s>')], dtype=np.int32), gpu_id)
+        src_vocab_size = len(src_vocab.vocab)
+        trg_vocab_size = len(trg_vocab.vocab)
 
-    src_vocab_size = len(src_vocab.vocab)
-    trg_vocab_size = len(trg_vocab.vocab)
     logger.info('src_vocab size: {}, trg_vocab size: {}'.format(src_vocab_size, trg_vocab_size))
 
     train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, gpu_id, sort=True, shuffle=True)

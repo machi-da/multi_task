@@ -48,14 +48,17 @@ class Word2Vec:
         # ゼロベクトルで初期化
         # embedding_matrix = np.zeros((vocab_size, vector_size))
 
+        match_word_count = 0
         for word, index in tqdm(vocab.items()):
             word_markup = '[' + word + ']'
             if word in embeddings_model.index2word:
                 embedding_matrix[index] = embeddings_model[word]
+                match_word_count += 1
             elif word_markup in embeddings_model.index2word:
                 embedding_matrix[index] = embeddings_model[word_markup]
+                match_word_count += 1
 
-        return embedding_matrix, vector_size
+        return embedding_matrix, vector_size, match_word_count
 
 
 def check(w2v):
