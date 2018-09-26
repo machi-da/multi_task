@@ -217,7 +217,6 @@ def main():
             """EVALUATE"""
             valid_loss = 0
             for batch in valid_iter.generate():
-                batch = convert.convert(batch, gpu_id)
                 with chainer.no_backprop_mode(), chainer.using_config('train', False):
                     valid_loss += model.pretrain(*batch).data
             logger.info('P{} ## val loss:{}'.format(epoch, valid_loss))
