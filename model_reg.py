@@ -181,6 +181,7 @@ class Multi(chainer.Chain):
         alignments = []
         sentences = []
         label = []
+
         for l in label_proj:
             l = l.T.data[0]
             label.append(l)
@@ -272,6 +273,7 @@ class Label(chainer.Chain):
         alignments = []
         sentences = []
         label = []
+
         for l in label_proj:
             l = l.T.data[0]
             label.append(l)

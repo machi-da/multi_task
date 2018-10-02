@@ -169,6 +169,7 @@ def main():
     test_iter = dataset.Iterator(test_src_file, test_src_file, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
 
     gridsearcher = gridsearch.GridSearch(test_src_file)
+
     """MODEL"""
     if model_type == 'multi':
         model = model_reg.Multi(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, coefficient, src_initialW, trg_initialW)
@@ -181,6 +182,7 @@ def main():
     optimizer.setup(model)
     optimizer.add_hook(chainer.optimizer.GradientClipping(gradclip))
     optimizer.add_hook(chainer.optimizer.WeightDecay(weight_decay))
+
     """GPU"""
     if gpu_id >= 0:
         logger.info('Use GPU')
@@ -206,9 +208,9 @@ def main():
                         sum_loss = 0
 
                 except Exception as e:
-                    logger.info('E{} ## iteration: {}, {}'.format(epoch, i, e))
+                    logger.info('P{} ## iteration: {}, {}'.format(epoch, i, e))
                     with open(model_dir + 'error_log.txt', 'a')as f:
-                        f.write('E{} ## iteration {}\n'.format(epoch, i))
+                        f.write('P{} ## iteration {}\n'.format(epoch, i))
                         f.write(traceback.format_exc())
                         for b in batch[0]:
                             [f.write(src_vocab.id2word(chainer.cuda.to_cpu(bb)) + '\n') for bb in b]
