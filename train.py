@@ -250,19 +250,30 @@ def main():
                     sum_loss = 0
 
             except Exception as e:
-                logger.info('E{} ## iteration: {}, {}'.format(epoch, i, e))
+                logger.info('E{} ## train iter: {}, {}'.format(epoch, i, e))
                 with open(model_dir + 'error_log.txt', 'a')as f:
-                    f.write('E{} ## iteration {}\n'.format(epoch, i))
+                    f.write('E{} ## train iter: {}\n'.format(epoch, i))
                     f.write(traceback.format_exc())
+                    f.write('E{} ## [batch detail]'.format(epoch))
                     for b in batch[0]:
                         [f.write(src_vocab.id2word(chainer.cuda.to_cpu(bb)) + '\n') for bb in b]
         chainer.serializers.save_npz(model_dir + 'model_epoch_{}.npz'.format(epoch), model)
 
         """EVALUATE"""
         valid_loss = 0
-        for batch in valid_iter.generate():
-            with chainer.no_backprop_mode(), chainer.using_config('train', False):
-                valid_loss += optimizer.target(*batch).data
+        for i, batch in enumerate(valid_iter.generate(), start=1):
+            try:
+                with chainer.no_backprop_mode(), chainer.using_config('train', False):
+                    valid_loss += optimizer.target(*batch).data
+            except Exception as e:
+                logger.info('E{} ## valid iter: {}, {}'.format(epoch, i, e))
+                with open(model_dir + 'error_log.txt', 'a')as f:
+                    f.write('E{} ## valid iter: {}\n'.format(epoch, i))
+                    f.write(traceback.format_exc())
+                    f.write('E{} ## [batch detail]'.format(epoch))
+                    for b in batch[0]:
+                        [f.write(src_vocab.id2word(chainer.cuda.to_cpu(bb)) + '\n') for bb in b]
+
         logger.info('E{} ## val loss:{}'.format(epoch, valid_loss))
         loss_dic[epoch] = valid_loss
         result.append('{},{}'.format(epoch, valid_loss))
@@ -272,8 +283,18 @@ def main():
         labels = []
         alignments = []
         for i, batch in enumerate(test_iter.generate(), start=1):
-            with chainer.no_backprop_mode(), chainer.using_config('train', False):
-                output, label, align = model.predict(batch[0], sos, eos)
+            try:
+                with chainer.no_backprop_mode(), chainer.using_config('train', False):
+                    output, label, align = model.predict(batch[0], sos, eos)
+            except Exception as e:
+                logger.info('E{} ## test iter: {}, {}'.format(epoch, i, e))
+                with open(model_dir + 'error_log.txt', 'a')as f:
+                    f.write('E{} ## test iter: {}\n'.format(epoch, i))
+                    f.write(traceback.format_exc())
+                    f.write('E{} ## [batch detail]'.format(epoch))
+                    for b in batch[0]:
+                        [f.write(src_vocab.id2word(chainer.cuda.to_cpu(bb)) + '\n') for bb in b]
+
             for o in output:
                 outputs.append(trg_vocab.id2word(chainer.cuda.to_cpu(o)))
             for l in label:
