@@ -1,6 +1,8 @@
 import argparse
 import re
 import os
+from collections import OrderedDict
+from tqdm import tqdm
 
 import evaluate
 import gridsearch
@@ -33,7 +35,7 @@ def main():
 
     assign = args.assign
 
-    merge_dir = model_dir1[:-1] + model_dir2
+    merge_dir = model_dir1 + model_dir2
     if not os.path.exists(merge_dir):
         os.mkdir(merge_dir)
 
@@ -47,21 +49,26 @@ def main():
         gridsearch.main(save_file, label, align, correct)
 
     else:
-        result_dic = {}
         max_epoch_num = 10
-        for i in range(1, max_epoch_num + 1):
+        result_dic = OrderedDict()
+        for i in tqdm(range(1, max_epoch_num + 1)):
             for j in range(1, max_epoch_num + 1):
-                label, _, correct = evaluate.load_score_file(model_dir1 + 'model_epoch_{}', model_dir1)
-                _, align, _ = evaluate.load_score_file(model_dir2 + 'model_epoch_{}', model_dir2)
-                save_file = merge_dir + 'label{}_encdec{}'.format(i, j)
-                s_rate = gridsearch.main(save_file, label, align, correct)
+                label, _, correct = evaluate.load_score_file(model_dir1 + 'model_epoch_{}'.format(i), model_dir1)
+                _, align, _ = evaluate.load_score_file(model_dir2 + 'model_epoch_{}'.format(j), model_dir2)
+                model = 'label{}_encdec{}'.format(i, j)
+                save_file = merge_dir + model
 
-                result_dic[save_file] = s_rate
+                try:
+                    s_rate = gridsearch.main(save_file, label, align, correct)
+                    result_dic[model] = float(s_rate[-1])
+                except KeyError:
+                    result_dic[model] = -1
+
         with open(merge_dir + 'merge_result.txt', 'w')as f:
-            [f.write('{}\t{}\n'.format(k, v)) for k, v in result_dic.items()]
-        best_comb = max(result_dic, key=(lambda x: result_dic[x]))
-        f.write('[Best comb]')
-        f.write('{}\t{}\n'.format(best_comb, result_dic[best_comb]))
+            [f.write('{} {}\t{}\n'.format(i, k, v)) for i, (k, v) in enumerate(result_dic.items(), start=1)]
+            best_comb = max(result_dic, key=(lambda x: result_dic[x]))
+            f.write('[Best comb]\n')
+            f.write('{}\t{}\n'.format(best_comb, result_dic[best_comb]))
 
 
 if __name__ == '__main__':
