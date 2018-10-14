@@ -287,7 +287,7 @@ def load_score_file(model_name, model_dir):
     label = []
     align = []
     if model_dir.split('_')[0] == 'encdec':
-        raw_data = config[data_path]['row_score_file']
+        raw_data = config[data_path]['raw_score_file']
         label = dataset.txt_to_list(raw_data)
     else:
         with open(model_name + '.label', 'r')as f:

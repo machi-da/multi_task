@@ -129,6 +129,8 @@ def main(model_name, label, align, correct):
     print('s: {} | {}'.format(' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
     # print('m: {} | {}'.format(' '.join(x for x in m_rate), ' '.join(x for x in m_count)))
 
+    return s_rate
+
 
 if __name__ == '__main__':
     args = sys.argv
