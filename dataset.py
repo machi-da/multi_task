@@ -21,10 +21,10 @@ def load(file_name):
     return text
 
 
-def load_with_label(file_name):
+def load_with_label_binary(file_name):
     label_lit = []
     text = []
-    with open(file_name)as f:
+    with open(file_name, 'r')as f:
         data = f.readlines()
     for d in data:
         t = []
@@ -43,7 +43,7 @@ def load_with_label(file_name):
 def load_with_label_reg(file_name):
     label_lit = []
     text = []
-    with open(file_name)as f:
+    with open(file_name, 'r')as f:
         data = f.readlines()
     for d in data:
         t = []
@@ -51,6 +51,24 @@ def load_with_label_reg(file_name):
         sentences = sentences.split('|||')
         label = np.array([float(l) for l in label.split(',')], dtype=np.float32)
         label_lit.append(label)
+
+        for sentence in sentences:
+            t.append(sentence.split(' '))
+        text.append(t)
+    return label_lit, text
+
+
+def load_with_label_index(file_name):
+    label_lit = []
+    text = []
+    with open(file_name, 'r')as f:
+        data = f.readlines()
+    for d in data:
+        t = []
+        label, sentences = d.strip().split('\t')
+        sentences = sentences.split('|||')
+        l_index = [int(l)-1 for l in label.split(',')]
+        label_lit.append(l_index)
 
         for sentence in sentences:
             t.append(sentence.split(' '))
@@ -91,34 +109,40 @@ class VocabNormal:
         self.vocab = None
         self.reverse_vocab = None
 
-    def build(self, file_name, include_label, initial_vocab, vocab_size, freq=0):
-        self.vocab = self._build_vocab(file_name, include_label, initial_vocab, vocab_size, freq)
-
-    def _build_vocab(self, file_name, with_label, initial_vocab, vocab_size, freq=0):
+    def build(self, obj, with_label, initial_vocab, vocab_size, freq=0):
         vocab = copy.copy(initial_vocab)
         word_count = Counter()
         words = []
 
-        if with_label:
-            _, documents = load_with_label_reg(file_name)
+        if obj is str:
+            if with_label:
+                _, documents = load_with_label_reg(obj)
 
-            for i, doc in enumerate(documents):
+                for i, doc in enumerate(documents):
+                    for sentence in doc:
+                        words.extend(sentence)
+                    # 10000文書ごとにCounterへ渡す
+                    if i % 10000 == 0:
+                        word_count += Counter(words)
+                        words = []
+                else:
+                    word_count += Counter(words)
+
+            else:
+                documents = load(obj)
+                for doc in documents:
+                    words.extend(doc)
+                word_count = Counter(words)
+
+        elif obj is list:
+            for i, doc in enumerate(obj):
                 for sentence in doc:
                     words.extend(sentence)
-                # 10000文書ごとにCounterへ渡す
                 if i % 10000 == 0:
                     word_count += Counter(words)
                     words = []
             else:
                 word_count += Counter(words)
-
-        else:
-            documents = load(file_name)
-
-            for doc in documents:
-                words.extend(doc)
-
-            word_count = Counter(words)
 
         for w, c in word_count.most_common():
             if len(vocab) >= vocab_size:
@@ -127,7 +151,8 @@ class VocabNormal:
                 break
             if w not in vocab:
                 vocab[w] = len(vocab)
-        return vocab
+        self.vocab = vocab
+        return
 
     def load(self, vocab_file):
         self.vocab = load_pickle(vocab_file)
@@ -266,7 +291,85 @@ class Iterator:
             data = sorted(data, key=lambda x: len(x[0]), reverse=True)
         batches = [convert.convert(data[b * batch_size: (b + 1) * batch_size], gpu_id) for b in range(len(data) // batch_size)]
         if len(data) % batch_size != 0:
-            batches.append(convert.convert(data[-(len(data) % batch_size + 1):]))
+            batches.append(convert.convert(data[-(len(data) % batch_size):]))
+
+        return batches
+
+    def generate(self):
+        batches = self.batches
+        if self.shuffle:
+            batches = random.sample(self.batches, len(self.batches))
+
+        for batch in batches:
+            yield batch
+
+
+class SuperviseIterator:
+    def __init__(self, src_text, src_label, src_vocab, batch_size, gpu_id, sort=True, shuffle=True):
+        self.src_vocab = src_vocab
+
+        self.sort = sort
+        self.shuffle = shuffle
+
+        self.batches = self._prepare_minibatch(src_text, src_label, batch_size, gpu_id)
+
+    def _convert(self, src, trg, label):
+        src_id = [self.src_vocab.word2id(s) for s in src]
+        trg_sos = self.src_vocab.word2id(trg, sos=True)
+        trg_eos = self.src_vocab.word2id(trg, eos=True)
+        return src_id, trg_sos, trg_eos, label
+
+    """
+    def generate(self, batches_per_sort=10000):
+        gpu_id = self.gpu_id
+        src, trg, label = self.src, self.trg, self.label
+        batch_size = self.batch_size
+
+        data = []
+        for s, t, l in zip(src, trg, label):
+            data.append(self._convert(s, t, l))
+
+            if len(data) != batch_size * batches_per_sort:
+                continue
+
+            if self.sort:
+                data = sorted(data, key=lambda x: len(x[0]), reverse=True)
+            batches = [convert.convert(data[b * batch_size: (b + 1) * batch_size], gpu_id) for b in range(batches_per_sort)]
+
+            if self.shuffle:
+                random.shuffle(batches)
+
+            for batch in batches:
+                yield batch
+
+            data = []
+
+        if len(data) != 0:
+            if self.sort:
+                data = sorted(data, key=lambda x: len(x[0]), reverse=True)
+            batches = [convert.convert(data[b * batch_size: (b + 1) * batch_size], gpu_id) for b in range(int(len(data) / batch_size) + 1)]
+
+            if self.shuffle:
+                random.shuffle(batches)
+
+            for batch in batches:
+                # 補足: len(data) == batch_sizeのとき、batchesの最後に空listができてしまうための対策
+                # convertしてあるの関係で([], [], [], [])と返ってくるので、最初のリストが空かどうかで判定
+                if not batch[0]:
+                    continue
+                yield batch
+    """
+
+    def _prepare_minibatch(self, text, label, batch_size, gpu_id):
+        data = []
+        for t, l in zip(text, label):
+            data.append(self._convert(t, [], l))
+
+        if self.sort:
+            data = sorted(data, key=lambda x: len(x[0]), reverse=True)
+        batches = [convert.convert(data[b * batch_size: (b + 1) * batch_size], gpu_id) for b in range(len(data) // batch_size)]
+        if len(data) % batch_size != 0:
+            batches.append(convert.convert(data[-(len(data) % batch_size):]))
 
         return batches
 

@@ -9,60 +9,36 @@ np.random.seed(1)
 
 
 class GridSearch:
-    def __init__(self, correct_txt_file, valid_num=5):
-        with open(correct_txt_file, 'r')as f:
-            self.correct_data = f.readlines()
-        self.valid_num = len(self.correct_data) // valid_num
+    def __init__(self, correct_txt_file, valid_num):
+        self.valid_num = valid_num
         self.ev = evaluate.Evaluate(correct_txt_file)
-        
+
         self.result_log = []
 
-    def slice(self, lit):
-        valid_num = self.valid_num
-        if valid_num == 0:
-            return [lit]
-        res = []
-        for a in zip_longest(*[iter(lit)] * valid_num):
-            res.append(list(a))
-        return res
-
-    def split_dev_test(self, lit, index):
-        dev, test = [], []
-        for i, l in enumerate(lit):
-            if i == index:
-                test = l
-            else:
-                dev.extend(l)
-        return dev, test
-
-    def shuffle_list(self, *args):
-        zipped = list(zip(*args))
-        np.random.shuffle(zipped)
-        shuffled_list = zip(*zipped)
-        return shuffled_list
-
-    def split_data(self, label_list, align_list=None, detail_flag=False):
+    def gridsearch(self, correct_label, label_list, align_list=None, detail_flag=False):
         param = []
         total = [0, 0, 0, 0, 0, 0, 0]
         detail = []
 
+        slice_size = len(correct_label) // self.valid_num
+
         if align_list:
-            c_data, l_data, a_data = self.shuffle_list(self.correct_data, label_list, align_list)
-            align = self.slice(a_data)
+            c_data, l_data, a_data = shuffle_list(correct_label, label_list, align_list)
+            align = slice_list(a_data, slice_size)
         else:
-            c_data, l_data = self.shuffle_list(self.correct_data, label_list)
-        
-        correct = self.slice(c_data)
-        label = self.slice(l_data)
+            c_data, l_data = shuffle_list(correct_label, label_list)
+
+        correct = slice_list(c_data, slice_size)
+        label = slice_list(l_data, slice_size)
 
         for i in range(len(correct)):
-            c_dev, c_test = self.split_dev_test(correct, i)
-            l_dev, l_test = self.split_dev_test(label, i)
+            c_dev, c_test = split_dev_test(correct, i)
+            l_dev, l_test = split_dev_test(label, i)
             a_dev, a_test = [], []
             if align_list:
-                a_dev, a_test = self.split_dev_test(align, i)
+                a_dev, a_test = split_dev_test(align, i)
 
-            self.ev.correct_data = c_dev
+            self.ev.correct_label = c_dev
             best_param_dic = self.ev.param_search(l_dev, a_dev)
             k = max(best_param_dic, key=lambda x: best_param_dic[x])
             v = best_param_dic[k]
@@ -98,6 +74,32 @@ class GridSearch:
         return '|'.join(param), total, s_total, init, mix
 
 
+def slice_list(lit, slice_size):
+    if slice_size == 0:
+        return [lit]
+    res = []
+    for a in zip_longest(*[iter(lit)] * slice_size):
+        res.append(list(a))
+    return res
+
+
+def split_dev_test(lit, index):
+    dev, test = [], []
+    for i, l in enumerate(lit):
+        if i == index:
+            test = l
+        else:
+            dev.extend(l)
+    return dev, test
+
+
+def shuffle_list(*args):
+    zipped = list(zip(*args))
+    np.random.shuffle(zipped)
+    shuffled_list = zip(*zipped)
+    return shuffled_list
+
+
 def parse_param(param):
     init = -1
     mix  = -1
@@ -121,8 +123,8 @@ def parse_param(param):
 
 
 def main(model_name, label, align, correct):
-    gs = GridSearch(correct)
-    param, total, s_total, init, mix = gs.split_data(label, align, detail_flag=True)
+    gs = GridSearch(correct, valid_num=5)
+    param, total, s_total, init, mix = gs.gridsearch(label, align, detail_flag=True)
 
     s_rate, s_count, m_rate, m_count = evaluate.eval_param(model_name, label, align, correct, init, mix)
     print('init {}, mix {}'.format(init, mix))

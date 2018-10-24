@@ -62,6 +62,8 @@ def main():
                     s_rate = gridsearch.main(save_file, label, align, correct)
                     result_dic[model] = float(s_rate[-1])
                 except KeyError:
+                    result_dic[model] = 0
+                except ValueError:
                     result_dic[model] = -1
 
         with open(merge_dir + 'merge_result.txt', 'w')as f:

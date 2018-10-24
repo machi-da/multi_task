@@ -111,6 +111,8 @@ def main():
     src_w2v_file = config[data_path]['src_w2v_file']
     trg_w2v_file = config[data_path]['trg_w2v_file']
 
+    correct_label, _ = dataset.load_with_label_index(test_src_file)
+
     train_data_size = dataset.data_size(train_src_file)
     valid_data_size = dataset.data_size(valid_src_file)
     logger.info('train size: {}, valid size: {}'.format(train_data_size, valid_data_size))
@@ -168,7 +170,7 @@ def main():
     valid_iter = dataset.Iterator(valid_src_file, valid_trg_file, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
     test_iter = dataset.Iterator(test_src_file, test_src_file, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
 
-    gridsearcher = gridsearch.GridSearch(test_src_file)
+    gridsearcher = gridsearch.GridSearch(test_src_file, valid_num=2)
 
     """MODEL"""
     if model_type == 'multi':
@@ -303,7 +305,9 @@ def main():
                 alignments.append(chainer.cuda.to_cpu(a))
 
         if model_type == 'multi':
-            param, total, s_total, init, mix = gridsearcher.split_data(labels, alignments)
+            print(correct_label)
+            print(labels)
+            param, total, s_total, init, mix = gridsearcher.gridsearch(correct_label, labels, alignments)
             logger.info('E{} ## {}'.format(epoch, param))
             logger.info('E{} ## {}'.format(epoch, total))
             with open(model_dir + 'model_epoch_{}.label'.format(epoch), 'w')as f:
@@ -314,14 +318,14 @@ def main():
                 [f.write('{}\n'.format(a)) for a in alignments]
 
         elif model_type in ['label', 'pretrain']:
-            param, total, s_total, init, mix = gridsearcher.split_data(labels)
+            param, total, s_total, init, mix = gridsearcher.gridsearch(correct_label, labels)
             logger.info('E{} ## {}'.format(epoch, param))
             logger.info('E{} ## {}'.format(epoch, total))
             with open(model_dir + 'model_epoch_{}.label'.format(epoch), 'w')as f:
                 [f.write('{}\n'.format(l)) for l in labels]
 
         else:
-            param, total, s_total, init, mix = gridsearcher.split_data(raw_score, alignments)
+            param, total, s_total, init, mix = gridsearcher.gridsearch(correct_label, raw_score, alignments)
             logger.info('E{} ## {}'.format(epoch, param))
             logger.info('E{} ## {}'.format(epoch, total))
             with open(model_dir + 'model_epoch_{}.hypo'.format(epoch), 'w')as f:

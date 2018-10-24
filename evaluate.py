@@ -11,11 +11,14 @@ import dataset
 
 class Evaluate:
     def __init__(self, correct_txt_file):
+        self.correct_label = []
         with open(correct_txt_file, 'r')as f:
-            self.correct_data = f.readlines()
+            correct_data = f.readlines()
+        for d in correct_data:
+            self.correct_label.append([int(num) - 1 for num in d.split('\t')[0].split(',')])
 
         single_index = ['method', 'score']
-        for i, d in enumerate(self.correct_data, start=1):
+        for i, d in enumerate(correct_data, start=1):
             correct_label = d.split('\t')[0].split(',')
             if len(correct_label) == 1 and correct_label[0] != '0':
                 single_index.append(str(i))
@@ -31,8 +34,7 @@ class Evaluate:
     def label(self, label_list):
         label_data = copy.deepcopy(label_list)
         rank_list = []
-        for label, d in zip(label_data, self.correct_data):
-            correct = [int(num) - 1 for num in d.split('\t')[0].split(',')]
+        for label, correct in zip(label_data, self.correct_label):
             rank = []
             for _ in range(len(label)):
                 index = label.argmax()
@@ -53,8 +55,7 @@ class Evaluate:
     def label_init(self, label_list, init_threshold=0.7):
         label_data = copy.deepcopy(label_list)
         rank_list = []
-        for label, d in zip(label_data, self.correct_data):
-            correct = [int(num) - 1 for num in d.split('\t')[0].split(',')]
+        for label, correct in zip(label_data, self.correct_label):
             rank = []
             true_index = list(np.where(label >= init_threshold)[0])
             for _ in range(len(label)):
@@ -90,9 +91,8 @@ class Evaluate:
     def label_mix_align(self, label_list, align_list, weight=0.5):
         label_data = copy.deepcopy(label_list)
         rank_list = []
-        for label, d, align in zip(label_data, self.correct_data, align_list):
+        for label, correct, align in zip(label_data, self.correct_label, align_list):
             label = weight * label + (1 - weight) * align
-            correct = [int(num) - 1 for num in d.split('\t')[0].split(',')]
             rank = []
             for _ in range(len(label)):
                 index = label.argmax()
@@ -114,10 +114,9 @@ class Evaluate:
     def label_mix_aligh_init(self, label_list, align_list, init_threshold=0.7, weight=0.5):
         label_data = copy.deepcopy(label_list)
         rank_list = []
-        for label, d, align in zip(label_data, self.correct_data, align_list):
+        for label, correct, align in zip(label_data, self.correct_label, align_list):
             label = weight * label + (1 - weight) * align
             # label = label * align
-            correct = [int(num) - 1 for num in d.split('\t')[0].split(',')]
             rank = []
             # threshold = init_threshold + (len(label) - 1)
             true_index = list(np.where(label >= init_threshold)[0])
@@ -281,6 +280,7 @@ def load_score_file(model_name, model_dir):
 
     data_path = 'local' if model_dir.split('_')[2] == 'l' else 'server'
     correct = config[data_path]['test_src_file']
+
 
     # correct = '/Users/machida/work/yahoo/util/correct1-2.txt'
 

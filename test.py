@@ -139,7 +139,7 @@ def main():
 
     model_file = model_file[:-3]
     if model_type == 'multi':
-        score = gridsearcher.split_data(labels, alignments)
+        score = gridsearcher.gridsearch(labels, alignments)
         logger.info('E{} ## {}'.format(epoch, score[0]))
         logger.info('E{} ## {}'.format(epoch, score[1]))
         with open(model_file + 'label.T', 'w')as f:
@@ -150,14 +150,14 @@ def main():
             [f.write('{}\n'.format(a)) for a in alignments]
 
     elif model_type in ['label', 'pretrain']:
-        score = gridsearcher.split_data(labels, alignments)
+        score = gridsearcher.gridsearch(labels, alignments)
         logger.info('E{} ## {}'.format(epoch, score[0]))
         logger.info('E{} ## {}'.format(epoch, score[1]))
         with open(model_file + 'label.T', 'w')as f:
             [f.write('{}\n'.format(l)) for l in labels]
 
     else:
-        score = gridsearcher.split_data(row_score, alignments)
+        score = gridsearcher.gridsearch(row_score, alignments)
         logger.info('E{} ## {}'.format(epoch, score[0]))
         logger.info('E{} ## {}'.format(epoch, score[1]))
         with open(model_file + '.hypo.T', 'w')as f:

@@ -231,6 +231,8 @@ class Label(chainer.Chain):
         label_proj = self.labelClassifier(enc_ys, hs)
         concat_label_proj = F.concat(F.concat(label_proj, axis=0), axis=0)
         concat_label_gold = F.concat(label_gold, axis=0)
+        print(concat_label_proj)
+        print(concat_label_gold)
         loss = F.mean_squared_error(concat_label_proj, concat_label_gold)
 
         return loss
@@ -353,5 +355,60 @@ class EncoderDecoder(chainer.Chain):
                 attn_score = self.xp.sum(self.xp.array(attn_score, dtype=self.xp.float32), axis=0) / i
             sentences.append(self.xp.hstack(sentence[1:]))
             alignments.append(attn_score)
+
+        return sentences, label, alignments
+
+
+class Supervise(chainer.Chain):
+    def __init__(self, src_vocab_size, embed_size, hidden_size, class_size, dropout,
+                 src_initialW=None):
+        super(Supervise, self).__init__()
+        with self.init_scope():
+            self.wordEnc = WordEncoder(src_vocab_size, embed_size, hidden_size, dropout, src_initialW)
+            self.sentEnc = SentEncoder(hidden_size, dropout)
+            self.labelClassifier = LabelClassifier(class_size, hidden_size, dropout)
+        self.lossfun = F.softmax_cross_entropy
+
+    def __call__(self, sources, targets_sos, targets_eos, label_gold):
+        hs, cs, enc_ys = self.encode(sources)
+
+        label_proj = self.labelClassifier(enc_ys, hs)
+        concat_label_proj = F.concat(label_proj, axis=0)
+        concat_label_gold = F.concat(label_gold, axis=0)
+        loss = self.lossfun(concat_label_proj, concat_label_gold)
+
+        return loss
+
+    def encode(self, sources):
+        sentences = []
+        split_num = []
+        sent_vectors = []
+
+        for source in sources:
+            split_num.append(len(source))
+            sentences.extend(source)
+
+        word_hy, _, _ = self.wordEnc(None, None, sentences)
+
+        start = 0
+        for num in split_num:
+            sent_vectors.append(word_hy[start:start + num])
+            start += num
+
+        sent_hy, sent_cy, sent_ys = self.sentEnc(None, None, sent_vectors)
+
+        return sent_hy, sent_cy, sent_vectors
+
+    def predict(self, sources, sos, eos, limit=50):
+        hs, cs, enc_ys = self.encode(sources)
+        label_proj = self.labelClassifier(enc_ys, hs)
+
+        alignments = []
+        sentences = []
+        label = []
+
+        for l in label_proj:
+            l = l.T.data[0]
+            label.append(l)
 
         return sentences, label, alignments
