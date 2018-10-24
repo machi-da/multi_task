@@ -254,22 +254,21 @@ class Evaluate:
 
         return best_param_dic
 
-
-def eval_param(model_name, label, align, correct, init=-1, mix=-1):
-    evaluater = Evaluate(correct)
-    if init == -1:
-        if mix == -1:
-            s_rate, s_count, m_rate, m_count = evaluater.label(label)
+    def eval_param(self, model_name, label, align, init=-1, mix=-1, save=True):
+        if init == -1:
+            if mix == -1:
+                s_rate, s_count, m_rate, m_count = self.label(label)
+            else:
+                s_rate, s_count, m_rate, m_count = self.label_mix_align(label, align, mix)
         else:
-            s_rate, s_count, m_rate, m_count = evaluater.label_mix_align(label, align, mix)
-    else:
-        if mix == -1:
-            s_rate, s_count, m_rate, m_count = evaluater.label_init(label, init)
-        else:
-            s_rate, s_count, m_rate, m_count = evaluater.label_mix_aligh_init(label, align, init, mix)
+            if mix == -1:
+                s_rate, s_count, m_rate, m_count = self.label_init(label, init)
+            else:
+                s_rate, s_count, m_rate, m_count = self.label_mix_aligh_init(label, align, init, mix)
 
-    evaluater.save_single_result(model_name + '.s_res.csv')
-    return s_rate, s_count, m_rate, m_count
+        if save:
+            self.save_single_result(model_name + '.s_res.csv')
+        return s_rate, s_count, m_rate, m_count
 
 
 def load_score_file(model_name, model_dir):
@@ -326,7 +325,8 @@ if __name__ == '__main__':
     model_dir = re.search(r'^(.*/)', model_name).group(1)
 
     label, align, correct = load_score_file(model_name, model_dir)
-    s_rate, s_count, m_rate, m_count = eval_param(model_name, label, align, correct, init, mix)
+    ev = Evaluate(correct)
+    s_rate, s_count, m_rate, m_count = ev.eval_param(model_name, label, align, init, mix)
 
     print('s: {} | {}'.format(' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
     # print('m: {} | {}'.format(' '.join(x for x in m_rate), ' '.join(x for x in m_count)))

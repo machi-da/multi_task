@@ -93,6 +93,22 @@ def split_dev_test(lit, index):
     return dev, test
 
 
+def split_train_dev_test(lit, index):
+    dev_index = index
+    test_index = index + 1
+    if test_index == len(lit):
+        test_index = 0
+    train, dev, test = [], [], []
+    for i, l in enumerate(lit):
+        if i == dev_index:
+            dev = l
+        elif i == test_index:
+            test = l
+        else:
+            dev.extend(l)
+    return train, dev, test
+
+
 def shuffle_list(*args):
     zipped = list(zip(*args))
     np.random.shuffle(zipped)
@@ -123,10 +139,11 @@ def parse_param(param):
 
 
 def main(model_name, label, align, correct):
+    ev = evaluate.Evaluate(correct)
     gs = GridSearch(correct, valid_num=5)
     param, total, s_total, init, mix = gs.gridsearch(label, align, detail_flag=True)
 
-    s_rate, s_count, m_rate, m_count = evaluate.eval_param(model_name, label, align, correct, init, mix)
+    s_rate, s_count, m_rate, m_count = ev.eval_param(model_name, label, align, init, mix)
     print('init {}, mix {}'.format(init, mix))
     print('s: {} | {}'.format(' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
     # print('m: {} | {}'.format(' '.join(x for x in m_rate), ' '.join(x for x in m_count)))

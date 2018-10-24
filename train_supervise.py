@@ -10,6 +10,7 @@ import traceback
 
 import convert
 import dataset
+import evaluate
 import gridsearch
 import model_reg
 import word2vec
@@ -96,7 +97,7 @@ def main():
 
     src_initialW = None
 
-    valid_num = 2
+    valid_num = 5
     train_label, train_text = dataset.load_with_label_binary(test_src_file)
     correct_label, _ = dataset.load_with_label_index(test_src_file)
     slice_size = len(train_label) // valid_num
@@ -113,9 +114,9 @@ def main():
         if not os.path.exists(model_valid_dir):
             os.mkdir(model_valid_dir)
 
-        l_dev, l_test = gridsearch.split_dev_test(train_label, ite - 1)
-        t_dev, t_test = gridsearch.split_dev_test(train_text, ite - 1)
-        c_dev, c_test = gridsearch.split_dev_test(correct_label, ite - 1)
+        l_train, l_dev, l_test = gridsearch.split_train_dev_test(train_label, ite - 1)
+        t_train, t_dev, t_test = gridsearch.split_train_dev_test(train_text, ite - 1)
+        c_train, c_dev, c_test = gridsearch.split_train_dev_test(correct_label, ite - 1)
 
         if vocab_type == 'normal':
             src_vocab = dataset.VocabNormal()
@@ -123,7 +124,7 @@ def main():
                 src_vocab.load(model_dir + 'src_vocab.normal.pkl')
             else:
                 init_vocab = {'<pad>': 0, '<unk>': 1, '<s>': 2, '</s>': 3}
-                src_vocab.build(t_dev, False, init_vocab, vocab_size)
+                src_vocab.build(t_train, False, init_vocab, vocab_size)
                 dataset.save_pickle(model_valid_dir + 'src_vocab.normal.pkl', src_vocab.vocab)
             src_vocab.set_reverse_vocab()
 
@@ -150,12 +151,14 @@ def main():
         #     eos = convert.convert_list(np.array([src_vocab.vocab.PieceToId('</s>')], dtype=np.int32), gpu_id)
         #     src_vocab_size = len(src_vocab.vocab)
 
-        logger.info('V{} ## train size: {}, test size: {}, src_vocab size: {}'.format(ite, len(t_dev), len(t_test), src_vocab_size))
+        logger.info('V{} ## train size: {}, dev size: {},test size: {}, vocab size: {}'.format(ite, len(t_train), len(t_dev), len(t_test), src_vocab_size))
 
-        train_iter = dataset.SuperviseIterator(t_dev, l_dev, src_vocab, batch_size, gpu_id, sort=True, shuffle=True)
-        # train_iter = dataset.SuperviseIterator(t_dev, l_dev, src_vocab, batch_size, gpu_id, sort=False, shuffle=False)
+        train_iter = dataset.SuperviseIterator(t_train, l_train, src_vocab, batch_size, gpu_id, sort=True, shuffle=True)
+        # train_iter = dataset.SuperviseIterator(t_train, l_train, src_vocab, batch_size, gpu_id, sort=False, shuffle=False)
+        dev_iter = dataset.SuperviseIterator(t_dev, l_dev, src_vocab, batch_size, gpu_id, sort=False, shuffle=False)
         test_iter = dataset.SuperviseIterator(t_test, l_test, src_vocab, batch_size, gpu_id, sort=False, shuffle=False)
 
+        evaluater = evaluate.Evaluate(test_src_file)
         gridsearcher = gridsearch.GridSearch(test_src_file, valid_num=2)
 
         """MODEL"""
@@ -201,6 +204,28 @@ def main():
             sum_loss = 0
             chainer.serializers.save_npz(model_valid_dir + 'model_epoch_{}.npz'.format(epoch), model)
 
+            """DEV"""
+            labels = []
+            for i, batch in enumerate(dev_iter.generate(), start=1):
+                try:
+                    with chainer.no_backprop_mode(), chainer.using_config('train', False):
+                        _, label, _ = model.predict(batch[0], sos, eos)
+                except Exception as e:
+                    logger.info('V{} ## E{} ## dev iter: {}, {}'.format(ite, epoch, i, e))
+                    with open(model_dir + 'error_log.txt', 'a')as f:
+                        f.write('V{} ## E{} ## dev iter: {}\n'.format(ite, epoch, i))
+                        f.write(traceback.format_exc())
+                        f.write('V{} ## E{} ## [batch detail]'.format(ite, epoch))
+                        for b in batch[0]:
+                            [f.write(src_vocab.id2word(chainer.cuda.to_cpu(bb)) + '\n') for bb in b]
+
+                for l in label:
+                    labels.append(chainer.cuda.to_cpu(l))
+            best_param_dic = evaluater.param_search(l_dev, [])
+            k = max(best_param_dic, key=lambda x: best_param_dic[x])
+            v = best_param_dic[k]
+            logger.info('V{} ## E{} ## dev tuning: {}, {}'.format(ite, epoch, k, v))
+
             """TEST"""
             labels = []
             for i, batch in enumerate(test_iter.generate(), start=1):
@@ -218,13 +243,15 @@ def main():
 
                 for l in label:
                     labels.append(chainer.cuda.to_cpu(l))
-            param, total, s_total, init, mix = gridsearcher.gridsearch(c_test, labels)
-            logger.info('V{} ## E{} ## {}'.format(ite, epoch, param))
-            logger.info('V{} ## E{} ## {}'.format(ite, epoch, total))
+            init, mix = gridsearch.parse_param(k)
+            evaluater.correct_label = c_test
+            s_rate, s_count, m_rate, m_count = evaluater.eval_param(model_valid_dir + 'test', labels, [], init, mix, False)
+            logger.info('V{} ## E{} ## {}'.format(ite, epoch, ' '.join(s_rate)))
+            # logger.info('V{} ## E{} ## {}'.format(ite, epoch, ' '.join(s_count)))
             with open(model_valid_dir + 'model_epoch_{}.label'.format(epoch), 'w')as f:
                 [f.write('{}\n'.format(l)) for l in labels]
 
-            accuracy_dic[epoch] = s_total
+            accuracy_dic[epoch] = float(s_rate[-1])
 
         """MODEL SAVE"""
         # best_epoch = min(loss_dic, key=(lambda x: loss_dic[x]))
