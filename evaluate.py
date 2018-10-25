@@ -269,8 +269,8 @@ def load_score_file(model_name, model_dir):
     config.read(config_file)
 
     data_path = 'local' if model_dir.split('_')[2] == 'l' else 'server'
-    correct = config[data_path]['test_single_src_file']
-    correct_label, _, single_index = dataset.load_with_label_index(correct)
+    correct = config[data_path]['test_src_file']
+    correct_label, _, single_index = dataset.load_with_label_index(correct, with_single_index=True)
 
     if model_dir.split('_')[0] == 'encdec':
         raw_data = config[data_path]['raw_score_file']

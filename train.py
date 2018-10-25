@@ -105,7 +105,7 @@ def main():
     train_trg_file = config[data_path]['train_trg_file']
     valid_src_file = config[data_path]['valid_src_file']
     valid_trg_file = config[data_path]['valid_trg_file']
-    test_src_file = config[data_path]['test_single_src_file']
+    test_src_file = config[data_path]['test_src_file']
     raw_score_file = config[data_path]['raw_score_file']
     raw_score = dataset.load_score_file(raw_score_file)
     src_w2v_file = config[data_path]['src_w2v_file']
