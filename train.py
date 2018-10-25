@@ -105,13 +105,13 @@ def main():
     train_trg_file = config[data_path]['train_trg_file']
     valid_src_file = config[data_path]['valid_src_file']
     valid_trg_file = config[data_path]['valid_trg_file']
-    test_src_file = config[data_path]['test_src_file']
+    test_src_file = config[data_path]['test_single_src_file']
     raw_score_file = config[data_path]['raw_score_file']
-    raw_score = dataset.txt_to_list(raw_score_file)
+    raw_score = dataset.load_score_file(raw_score_file)
     src_w2v_file = config[data_path]['src_w2v_file']
     trg_w2v_file = config[data_path]['trg_w2v_file']
 
-    correct_label, _ = dataset.load_with_label_index(test_src_file)
+    correct_label, _, _ = dataset.load_with_label_index(test_src_file)
 
     train_data_size = dataset.data_size(train_src_file)
     valid_data_size = dataset.data_size(valid_src_file)
@@ -170,7 +170,7 @@ def main():
     valid_iter = dataset.Iterator(valid_src_file, valid_trg_file, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
     test_iter = dataset.Iterator(test_src_file, test_src_file, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
 
-    gridsearcher = gridsearch.GridSearch(test_src_file, valid_num=2)
+    gridsearcher = gridsearch.GridSearch(valid_num=2)
 
     """MODEL"""
     if model_type == 'multi':

@@ -30,6 +30,7 @@ def parse_args():
     parser.add_argument('--vocab', '-v', choices=['normal', 'subword'], default='normal')
     parser.add_argument('--pretrain_w2v', '-p', action='store_true')
     parser.add_argument('--data_path', '-d', choices=['local', 'server'], default='server')
+    parser.add_argument('--init', type=float, default=0)
     args = parser.parse_args()
     return args
 
@@ -46,6 +47,7 @@ def main():
     vocab_type = args.vocab
     pretrain_w2v = args.pretrain_w2v
     data_path = args.data_path
+    init_param = args.init
 
     """DIR PREPARE"""
     config.read(config_file)
@@ -93,13 +95,13 @@ def main():
     logger.info('[Training start] logging to {}'.format(log_file))
 
     """DATASET"""
-    test_src_file = config[data_path]['test_src_file']
+    test_src_file = config[data_path]['test_single_src_file']
 
     src_initialW = None
 
     valid_num = 5
     train_label, train_text = dataset.load_with_label_binary(test_src_file)
-    correct_label, _ = dataset.load_with_label_index(test_src_file)
+    correct_label, _, _ = dataset.load_with_label_index(test_src_file)
     slice_size = len(train_label) // valid_num
 
     train_label, train_text, correct_label = gridsearch.shuffle_list(train_label, train_text, correct_label)
@@ -158,8 +160,7 @@ def main():
         dev_iter = dataset.SuperviseIterator(t_dev, l_dev, src_vocab, batch_size, gpu_id, sort=False, shuffle=False)
         test_iter = dataset.SuperviseIterator(t_test, l_test, src_vocab, batch_size, gpu_id, sort=False, shuffle=False)
 
-        evaluater = evaluate.Evaluate(test_src_file)
-        gridsearcher = gridsearch.GridSearch(test_src_file, valid_num=2)
+        evaluater = evaluate.Evaluate()
 
         """MODEL"""
         model = model_reg.Supervise(src_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, src_initialW)
@@ -172,9 +173,26 @@ def main():
 
         """GPU"""
         if gpu_id >= 0:
-            # logger.info('Use GPU')
             chainer.cuda.get_device_from_id(gpu_id).use()
             model.to_gpu()
+
+        if init_param != 0:
+            model_file = model_valid_dir + 'best_model.npz'
+            chainer.serializers.load_npz(model_file, model)
+            """TEST"""
+            labels = []
+            for i, batch in enumerate(test_iter.generate(), start=1):
+                with chainer.no_backprop_mode(), chainer.using_config('train', False):
+                    _, label, _ = model.predict(batch[0], sos, eos)
+
+                for l in label:
+                    labels.append(chainer.cuda.to_cpu(l))
+            evaluater.correct_label = c_test
+            s_rate, s_count, _, _ = evaluater.eval_param('', labels, [], init_param, -1, False)
+            print('s: {} | {}'.format(' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
+            continue
+        if init_param != 0:
+            exit()
 
         """TRAIN"""
         sum_loss = 0
@@ -199,6 +217,7 @@ def main():
                         f.write(traceback.format_exc())
                         f.write('V{} ## E{} ## [batch detail]'.format(ite, epoch))
                         for b in batch[0]:
+                            [print(chainer.cuda.to_cpu(bb)) for bb in b]
                             [f.write(src_vocab.id2word(chainer.cuda.to_cpu(bb)) + '\n') for bb in b]
             logger.info('V{} ## E{} ## train loss:{}'.format(ite, epoch, sum_loss))
             sum_loss = 0
@@ -221,7 +240,8 @@ def main():
 
                 for l in label:
                     labels.append(chainer.cuda.to_cpu(l))
-            best_param_dic = evaluater.param_search(l_dev, [])
+            evaluater.correct_label = c_dev
+            best_param_dic = evaluater.param_search(labels, [])
             k = max(best_param_dic, key=lambda x: best_param_dic[x])
             v = best_param_dic[k]
             logger.info('V{} ## E{} ## dev tuning: {}, {}'.format(ite, epoch, k, v))
@@ -254,10 +274,10 @@ def main():
             accuracy_dic[epoch] = float(s_rate[-1])
 
         """MODEL SAVE"""
-        # best_epoch = min(loss_dic, key=(lambda x: loss_dic[x]))
         best_epoch = max(accuracy_dic, key=(lambda x: accuracy_dic[x]))
         logger.info('V{} ## best_epoch:{} {}'.format(ite, best_epoch, model_dir))
         chainer.serializers.save_npz(model_valid_dir + 'best_model.npz', model)
+        shutil.copy(model_valid_dir + 'model_epoch_{}.label'.format(epoch), model_valid_dir + 'best_model.label')
 
         logger.info('')
 

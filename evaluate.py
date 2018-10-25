@@ -10,25 +10,16 @@ import dataset
 
 
 class Evaluate:
-    def __init__(self, correct_txt_file):
-        self.correct_label = []
-        with open(correct_txt_file, 'r')as f:
-            correct_data = f.readlines()
-        for d in correct_data:
-            self.correct_label.append([int(num) - 1 for num in d.split('\t')[0].split(',')])
-
-        single_index = ['method', 'score']
-        for i, d in enumerate(correct_data, start=1):
-            correct_label = d.split('\t')[0].split(',')
-            if len(correct_label) == 1 and correct_label[0] != '0':
-                single_index.append(str(i))
-        self.single_index = ','.join(single_index)
+    def __init__(self, correct_label=[], single_index=''):
+        self.correct_label = correct_label
+        self.single_index = single_index
         self.single_result = None
 
     def save_single_result(self, file_name):
         print('save single result: {}'.format(file_name))
         with open(file_name, 'w')as f:
-            [f.write(r + '\n') for r in self.single_result]
+            f.write(self.single_index + '\n')
+            f.write(self.single_result + '\n')
         return
 
     def label(self, label_list):
@@ -47,7 +38,7 @@ class Evaluate:
 
         method = 'normal'
         s_rate, s_count, s_result = self.single(rank_list, method)
-        self.single_result = [self.single_index, s_result]
+        self.single_result = s_result
         m_rate, m_count = self.multiple(rank_list)
 
         return s_rate, s_count, m_rate, m_count
@@ -83,7 +74,7 @@ class Evaluate:
 
         method = 'init_{}'.format(init_threshold)
         s_rate, s_count, s_result = self.single(rank_list, method)
-        self.single_result = [self.single_index, s_result]
+        self.single_result = s_result
         m_rate, m_count = self.multiple(rank_list)
 
         return s_rate, s_count, m_rate, m_count
@@ -106,7 +97,7 @@ class Evaluate:
 
         method = 'mix_{}'.format(weight)
         s_rate, s_count, s_result = self.single(rank_list, method)
-        self.single_result = [self.single_index, s_result]
+        self.single_result = s_result
         m_rate, m_count = self.multiple(rank_list)
 
         return s_rate, s_count, m_rate, m_count
@@ -145,7 +136,7 @@ class Evaluate:
 
         method = 'init_{} mix_{}'.format(init_threshold, weight)
         s_rate, s_count, s_result = self.single(rank_list, method)
-        self.single_result = [self.single_index, s_result]
+        self.single_result = s_result
         m_rate, m_count = self.multiple(rank_list)
 
         return s_rate, s_count, m_rate, m_count
@@ -278,34 +269,22 @@ def load_score_file(model_name, model_dir):
     config.read(config_file)
 
     data_path = 'local' if model_dir.split('_')[2] == 'l' else 'server'
-    correct = config[data_path]['test_src_file']
+    correct = config[data_path]['test_single_src_file']
+    correct_label, _, single_index = dataset.load_with_label_index(correct)
 
-
-    # correct = '/Users/machida/work/yahoo/util/correct1-2.txt'
-
-    label = []
-    align = []
     if model_dir.split('_')[0] == 'encdec':
         raw_data = config[data_path]['raw_score_file']
-        label = dataset.txt_to_list(raw_data)
+        label = dataset.load_score_file(raw_data)
     else:
-        with open(model_name + '.label', 'r')as f:
-            label_data = f.readlines()
-        for line in label_data:
-            line = line[1:-2]
-            score = np.array([float(l) for l in line.split()])
-            label.append(score)
+        label_file = model_name + '.label'
+        label = dataset.load_score_file(label_file)
 
-    is_align = os.path.isfile(model_name + '.align')
-    if is_align:
-        with open(model_name + '.align', 'r')as f:
-            attn_data = f.readlines()
-        for line in attn_data:
-            line = line[1:-2]
-            score = np.array([float(l) for l in line.split()])
-            align.append(score)
+    align = []
+    align_file = model_name + '.align'
+    if os.path.isfile(align_file):
+        align = dataset.load_score_file(align_file)
 
-    return label, align, correct
+    return label, align, correct_label, single_index
 
 
 def parse_args():
@@ -324,8 +303,8 @@ if __name__ == '__main__':
     mix = args.mix
     model_dir = re.search(r'^(.*/)', model_name).group(1)
 
-    label, align, correct = load_score_file(model_name, model_dir)
-    ev = Evaluate(correct)
+    label, align, correct_label, single_index = load_score_file(model_name, model_dir)
+    ev = Evaluate(correct_label, single_index)
     s_rate, s_count, m_rate, m_count = ev.eval_param(model_name, label, align, init, mix)
 
     print('s: {} | {}'.format(' '.join(x for x in s_rate), ' '.join(x for x in s_count)))

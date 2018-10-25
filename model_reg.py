@@ -408,7 +408,8 @@ class Supervise(chainer.Chain):
         label = []
 
         for l in label_proj:
-            l = l.T.data[0]
+            l = F.softmax(l)
+            l = l.data[:, 1]
             label.append(l)
 
         return sentences, label, alignments

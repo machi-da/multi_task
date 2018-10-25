@@ -9,9 +9,9 @@ np.random.seed(1)
 
 
 class GridSearch:
-    def __init__(self, correct_txt_file, valid_num):
+    def __init__(self, valid_num):
+        self.ev = evaluate.Evaluate()
         self.valid_num = valid_num
-        self.ev = evaluate.Evaluate(correct_txt_file)
 
         self.result_log = []
 
@@ -105,7 +105,7 @@ def split_train_dev_test(lit, index):
         elif i == test_index:
             test = l
         else:
-            dev.extend(l)
+            train.extend(l)
     return train, dev, test
 
 
@@ -138,10 +138,11 @@ def parse_param(param):
     return init, mix
 
 
-def main(model_name, label, align, correct):
-    ev = evaluate.Evaluate(correct)
-    gs = GridSearch(correct, valid_num=5)
-    param, total, s_total, init, mix = gs.gridsearch(label, align, detail_flag=True)
+def main(model_name, label, align, correct_label):
+    ev = evaluate.Evaluate()
+    gs = GridSearch(valid_num=5)
+    param, total, s_total, init, mix = gs.gridsearch(correct_label, label, align, detail_flag=True)
+    # param, total, s_total, init, mix = gs.gridsearch(correct_label, align, label, detail_flag=True)
 
     s_rate, s_count, m_rate, m_count = ev.eval_param(model_name, label, align, init, mix)
     print('init {}, mix {}'.format(init, mix))
@@ -156,6 +157,6 @@ if __name__ == '__main__':
     model_name = args[1]
     model_dir = re.search(r'^(.*/)', args[1]).group(1)
 
-    label, align, correct = evaluate.load_score_file(model_name, model_dir)
+    label, align, correct_label, _ = evaluate.load_score_file(model_name, model_dir)
 
-    main(model_name, label, align, correct)
+    main(model_name, label, align, correct_label)

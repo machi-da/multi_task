@@ -77,7 +77,7 @@ def main():
     """DATASET"""
     test_src_file = config[data_path]['test_src_file']
     row_score_file = config[data_path]['row_score_file']
-    row_score = dataset.txt_to_list(row_score_file)
+    row_score = dataset.load_score_file(row_score_file)
 
     test_data_size = dataset.data_size(test_src_file)
     logger.info('test size: {}'.format(test_data_size))

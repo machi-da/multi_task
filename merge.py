@@ -42,8 +42,8 @@ def main():
     if assign:
         model_num1 = model_name1.split('_')[-1].replace('.label', '')
         model_num2 = model_name1.split('_')[-1].replace('.align', '')
-        label, _, correct = evaluate.load_score_file(model_name1, model_dir1)
-        _, align, _ = evaluate.load_score_file(model_name2, model_dir2)
+        label, _, correct, _ = evaluate.load_score_file(model_name1, model_dir1)
+        _, align, _, _ = evaluate.load_score_file(model_name2, model_dir2)
 
         save_file = merge_dir + 'label{}_encdec{}'.format(model_num1, model_num2)
         gridsearch.main(save_file, label, align, correct)
@@ -53,8 +53,8 @@ def main():
         result_dic = OrderedDict()
         for i in tqdm(range(1, max_epoch_num + 1)):
             for j in range(1, max_epoch_num + 1):
-                label, _, correct = evaluate.load_score_file(model_dir1 + 'model_epoch_{}'.format(i), model_dir1)
-                _, align, _ = evaluate.load_score_file(model_dir2 + 'model_epoch_{}'.format(j), model_dir2)
+                label, _, correct, _ = evaluate.load_score_file(model_dir1 + 'model_epoch_{}'.format(i), model_dir1)
+                _, align, _, _ = evaluate.load_score_file(model_dir2 + 'model_epoch_{}'.format(j), model_dir2)
                 model = 'label{}_encdec{}'.format(i, j)
                 save_file = merge_dir + model
 

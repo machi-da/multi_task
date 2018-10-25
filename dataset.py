@@ -58,9 +58,11 @@ def load_with_label_reg(file_name):
     return label_lit, text
 
 
-def load_with_label_index(file_name):
+def load_with_label_index(file_name, with_single_index=False):
     label_lit = []
     text = []
+    single_index = []
+
     with open(file_name, 'r')as f:
         data = f.readlines()
     for d in data:
@@ -73,18 +75,26 @@ def load_with_label_index(file_name):
         for sentence in sentences:
             t.append(sentence.split(' '))
         text.append(t)
-    return label_lit, text
+
+    if with_single_index:
+        for i, d in enumerate(data, start=1):
+            label = d.split('\t')[0].split(',')
+            if len(label) == 1 and label[0] != '0':
+                single_index.append(str(i))
+        single_index = ','.join(single_index)
+
+    return label_lit, text, single_index
 
 
-def txt_to_list(file_name):
-    lit = []
-    with open(file_name, 'r')as f:
+def load_score_file(score_file):
+    score_label = []
+    with open(score_file, 'r')as f:
         data = f.readlines()
     for line in data:
         line = line[1:-2]
         score = np.array([float(l) for l in line.split()])
-        lit.append(score)
-    return lit
+        score_label.append(score)
+    return score_label
 
 
 def data_size(file_name):
@@ -114,7 +124,7 @@ class VocabNormal:
         word_count = Counter()
         words = []
 
-        if obj is str:
+        if type(obj) is str:
             if with_label:
                 _, documents = load_with_label_reg(obj)
 
@@ -134,7 +144,7 @@ class VocabNormal:
                     words.extend(doc)
                 word_count = Counter(words)
 
-        elif obj is list:
+        elif type(obj) is list:
             for i, doc in enumerate(obj):
                 for sentence in doc:
                     words.extend(sentence)
@@ -291,7 +301,7 @@ class Iterator:
             data = sorted(data, key=lambda x: len(x[0]), reverse=True)
         batches = [convert.convert(data[b * batch_size: (b + 1) * batch_size], gpu_id) for b in range(len(data) // batch_size)]
         if len(data) % batch_size != 0:
-            batches.append(convert.convert(data[-(len(data) % batch_size):]))
+            batches.append(convert.convert(data[-(len(data) % batch_size):], gpu_id))
 
         return batches
 
@@ -369,7 +379,7 @@ class SuperviseIterator:
             data = sorted(data, key=lambda x: len(x[0]), reverse=True)
         batches = [convert.convert(data[b * batch_size: (b + 1) * batch_size], gpu_id) for b in range(len(data) // batch_size)]
         if len(data) % batch_size != 0:
-            batches.append(convert.convert(data[-(len(data) % batch_size):]))
+            batches.append(convert.convert(data[-(len(data) % batch_size):], gpu_id))
 
         return batches
 
