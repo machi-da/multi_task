@@ -1,7 +1,6 @@
 import argparse
 import configparser
 import os
-import re
 import shutil
 import logging
 from logging import getLogger
@@ -55,17 +54,15 @@ def main():
     config.read(config_file)
     vocab_size = int(config['Parameter']['vocab_size'])
     coefficient = float(config['Parameter']['coefficient'])
-    base_dir = config[data_path]['base_dir']
-    dir_path_last = re.search(r'.*/(.*?)$', base_dir).group(1)
 
     vocab_name = vocab_type
     if pretrain_w2v:
         vocab_name = 'p' + vocab_name
 
     if model_type == 'multi':
-        model_dir = './super_{}_{}{}_{}_c{}_{}/'.format(model_type, vocab_name, vocab_size, data_path[0], coefficient,dir_path_last)
+        model_dir = './super_{}_{}{}_{}_c{}/'.format(model_type, vocab_name, vocab_size, data_path[0], coefficient)
     else:
-        model_dir = './super_{}_{}{}_{}_{}/'.format(model_type, vocab_name, vocab_size, data_path[0], dir_path_last)
+        model_dir = './super_{}_{}{}_{}/'.format(model_type, vocab_name, vocab_size, data_path[0])
 
     if not os.path.exists(model_dir):
         os.mkdir(model_dir)
@@ -301,19 +298,16 @@ def main():
                 for a in align:
                     alignments.append(chainer.cuda.to_cpu(a))
 
-            if model_type in ['multi', 'label', 'pretrain']:
-                evaluater.correct_label = c_dev
-                best_param_dic = evaluater.param_search(labels, alignments)
-                k = max(best_param_dic, key=lambda x: best_param_dic[x])
-                v = best_param_dic[k]
-                logger.info('V{} ## E{} ## dev tuning: {}, {}'.format(ite, epoch, k, v))
+            evaluater.correct_label = c_dev
 
+            if model_type in ['multi', 'label', 'pretrain']:
+                best_param_dic = evaluater.param_search(labels, alignments)
             else:
-                evaluater.correct_label = c_dev
                 best_param_dic = evaluater.param_search(r_dev, alignments)
-                k = max(best_param_dic, key=lambda x: best_param_dic[x])
-                v = best_param_dic[k]
-                logger.info('V{} ## E{} ## dev tuning: {}, {}'.format(ite, epoch, k, v))
+
+            k = max(best_param_dic, key=lambda x: best_param_dic[x])
+            v = best_param_dic[k]
+            logger.info('V{} ## E{} ## dev tuning: {}, {}'.format(ite, epoch, k, v))
 
             """TEST"""
             outputs = []
@@ -361,7 +355,7 @@ def main():
                 with open(model_valid_dir + 'model_epoch_{}.align'.format(epoch), 'w')as f:
                     [f.write('{}\n'.format(a)) for a in alignments]
 
-            accuracy_dic[epoch] = [float(s_rate[-1]), s_rate]
+            accuracy_dic[epoch] = [float(v), s_rate]
 
         """MODEL SAVE"""
         best_epoch = max(accuracy_dic, key=(lambda x: accuracy_dic[x][0]))
