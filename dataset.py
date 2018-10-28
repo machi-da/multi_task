@@ -315,13 +315,14 @@ class Iterator:
 
 
 class SuperviseIterator:
-    def __init__(self, src_text, src_label, src_vocab, batch_size, gpu_id, sort=True, shuffle=True):
+    def __init__(self, src_text, src_label, trg_text, src_vocab, trg_vocab, batch_size, gpu_id, sort=True, shuffle=True):
         self.src_vocab = src_vocab
+        self.trg_vocab = trg_vocab
 
         self.sort = sort
         self.shuffle = shuffle
 
-        self.batches = self._prepare_minibatch(src_text, src_label, batch_size, gpu_id)
+        self.batches = self._prepare_minibatch(src_text, trg_text, src_label, batch_size, gpu_id)
 
     def _convert(self, src, trg, label):
         src_id = [self.src_vocab.word2id(s) for s in src]
@@ -370,10 +371,10 @@ class SuperviseIterator:
                 yield batch
     """
 
-    def _prepare_minibatch(self, text, label, batch_size, gpu_id):
+    def _prepare_minibatch(self, src, trg, label, batch_size, gpu_id):
         data = []
-        for t, l in zip(text, label):
-            data.append(self._convert(t, [], l))
+        for s, t, l in zip(src, trg, label):
+            data.append(self._convert(s, t, l))
 
         if self.sort:
             data = sorted(data, key=lambda x: len(x[0]), reverse=True)

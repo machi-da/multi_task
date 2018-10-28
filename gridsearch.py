@@ -1,4 +1,4 @@
-import sys
+import argparse
 import re
 import evaluate
 from itertools import zip_longest
@@ -44,7 +44,7 @@ class GridSearch:
             v = best_param_dic[k]
             param.append(k)
             detail.append('{} dev: {} {}'.format(i + 1, k, v))
-            self.ev.correct_data = c_test
+            self.ev.correct_label = c_test
             k = k.split(' ')
             if len(k) == 1:
                 s_rate, s_count, m_rate, m_count = self.ev.label(l_test)
@@ -138,13 +138,17 @@ def parse_param(param):
     return init, mix
 
 
-def main(model_name, label, align, correct_label, single_index):
+def main(model_name, label, align, correct_label, single_index, detail_flag=True, align_only=False):
     gs = GridSearch(valid_num=5)
-    param, total, s_total, init, mix = gs.gridsearch(correct_label, label, align, detail_flag=True)
-    # param, total, s_total, init, mix = gs.gridsearch(correct_label, align, [], detail_flag=True)
-
     ev = evaluate.Evaluate(correct_label, single_index)
-    s_rate, s_count, m_rate, m_count = ev.eval_param(model_name, label, align, init, mix)
+
+    if align_only:
+        param, total, s_total, init, mix = gs.gridsearch(correct_label, align, [], detail_flag=detail_flag)
+        s_rate, s_count, m_rate, m_count = ev.eval_param(model_name, align, [], init, mix)
+    else:
+        param, total, s_total, init, mix = gs.gridsearch(correct_label, label, align, detail_flag=detail_flag)
+        s_rate, s_count, m_rate, m_count = ev.eval_param(model_name, label, align, init, mix)
+
     print('init {}, mix {}'.format(init, mix))
     print('s: {} | {}'.format(' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
     # print('m: {} | {}'.format(' '.join(x for x in m_rate), ' '.join(x for x in m_count)))
@@ -152,11 +156,20 @@ def main(model_name, label, align, correct_label, single_index):
     return s_rate
 
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('model_name')
+    parser.add_argument('--align_only', '-a', action='store_true')
+    args = parser.parse_args()
+    return args
+
+
 if __name__ == '__main__':
-    args = sys.argv
-    model_name = args[1]
-    model_dir = re.search(r'^(.*/)', args[1]).group(1)
+    args = parse_args()
+    model_name = args.model_name
+    model_dir = re.search(r'^(.*/)', model_name).group(1)
+    align_only = args.align_only
 
     label, align, correct_label, single_index = evaluate.load_score_file(model_name, model_dir)
 
-    main(model_name, label, align, correct_label, single_index)
+    main(model_name, label, align, correct_label, single_index, align_only, align_only)

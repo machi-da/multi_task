@@ -305,8 +305,6 @@ def main():
                 alignments.append(chainer.cuda.to_cpu(a))
 
         if model_type == 'multi':
-            print(correct_label)
-            print(labels)
             param, total, s_total, init, mix = gridsearcher.gridsearch(correct_label, labels, alignments)
             logger.info('E{} ## {}'.format(epoch, param))
             logger.info('E{} ## {}'.format(epoch, total))
