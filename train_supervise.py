@@ -54,6 +54,7 @@ def main():
     """DIR PREPARE"""
     config.read(config_file)
     vocab_size = int(config['Parameter']['vocab_size'])
+    coefficient = float(config['Parameter']['coefficient'])
     base_dir = config[data_path]['base_dir']
     dir_path_last = re.search(r'.*/(.*?)$', base_dir).group(1)
 
@@ -61,7 +62,10 @@ def main():
     if pretrain_w2v:
         vocab_name = 'p' + vocab_name
 
-    model_dir = './supervise_{}_{}{}_{}_{}/'.format(model_type, vocab_name, vocab_size, data_path[0], dir_path_last)
+    if model_type == 'multi':
+        model_dir = './super_{}_{}{}_{}_c{}_{}/'.format(model_type, vocab_name, vocab_size, data_path[0], coefficient,dir_path_last)
+    else:
+        model_dir = './super_{}_{}{}_{}_{}/'.format(model_type, vocab_name, vocab_size, data_path[0], dir_path_last)
 
     if not os.path.exists(model_dir):
         os.mkdir(model_dir)
@@ -161,7 +165,7 @@ def main():
                 trg_initialW, vector_size, trg_match_word_count = w2v.make_initialW(trg_vocab.vocab, trg_w2v_file)
                 embed_size = vector_size
                 hidden_size = vector_size
-                logger.info('Initialize w2v embedding. Match: src {}/{}'.format(src_match_word_count, src_vocab_size))
+                logger.info('Initialize w2v embedding. Match: src {}/{}, trg {}/{}'.format(src_match_word_count, src_vocab_size, trg_match_word_count, trg_vocab_size))
 
             # elif vocab_type == 'subword':
             #     src_vocab = dataset.VocabSubword()
