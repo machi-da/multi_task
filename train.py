@@ -333,9 +333,8 @@ def main():
         accuracy_dic[epoch] = s_total
 
     """MODEL SAVE"""
-    # best_epoch = min(loss_dic, key=(lambda x: loss_dic[x]))
     best_epoch = max(accuracy_dic, key=(lambda x: accuracy_dic[x]))
-    logger.info('best_epoch:{} {}'.format(best_epoch, model_dir))
+    logger.info('best_epoch:{}, score: {}, {}'.format(best_epoch, accuracy_dic[best_epoch], model_dir))
     chainer.serializers.save_npz(model_dir + 'best_model.npz', model)
 
     with open(model_dir + 'valid_loss.csv', 'w')as f:

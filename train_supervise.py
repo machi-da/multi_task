@@ -32,7 +32,6 @@ def parse_args():
     parser.add_argument('--vocab', '-v', choices=['normal', 'subword'], default='normal')
     parser.add_argument('--pretrain_w2v', '-p', action='store_true')
     parser.add_argument('--data_path', '-d', choices=['local', 'server'], default='server')
-    parser.add_argument('--init', type=float, default=0)
     args = parser.parse_args()
     return args
 
@@ -51,7 +50,6 @@ def main():
     vocab_type = args.vocab
     pretrain_w2v = args.pretrain_w2v
     data_path = args.data_path
-    init_param = args.init
 
     """DIR PREPARE"""
     config.read(config_file)
@@ -104,6 +102,8 @@ def main():
     trg_file = config[data_path]['single_trg_file']
     raw_score_file = config[data_path]['raw_score_file']
     raw_score_data = dataset.load_score_file(raw_score_file)
+    src_w2v_file = config[data_path]['src_w2v_file']
+    trg_w2v_file = config[data_path]['trg_w2v_file']
 
     src_initialW = None
     trg_initialW = None
@@ -122,6 +122,7 @@ def main():
     split_raw_score = gridsearch.slice_list(raw_score_data, slice_size)
     split_correct_label = gridsearch.slice_list(correct_label_data, slice_size)
 
+    cross_valid_result = []
     for ite in range(1, len(split_label) + 1):
 
         model_valid_dir = model_dir + 'valid{}/'.format(ite)
@@ -154,24 +155,25 @@ def main():
             src_vocab_size = len(src_vocab.vocab)
             trg_vocab_size = len(trg_vocab.vocab)
 
-        #     if pretrain_w2v:
-        #         w2v = word2vec.Word2Vec()
-        #         src_initialW, vector_size, src_match_word_count = w2v.make_initialW(src_vocab.vocab, src_w2v_file)
-        #         embed_size = vector_size
-        #         hidden_size = vector_size
-        #         logger.info('Initialize w2v embedding. Match: src {}/{}'.format(src_match_word_count, src_vocab_size))
-        #
-        # elif vocab_type == 'subword':
-        #     src_vocab = dataset.VocabSubword()
-        #     trg_vocab = dataset.VocabSubword()
-        #     if os.path.isfile(model_dir + 'src_vocab.sub.model'):
-        #         src_vocab.load(model_dir + 'src_vocab.sub.model')
-        #     else:
-        #         src_vocab.build(train_src_file + '.sub', model_dir + 'src_vocab.sub', vocab_size)
-        #
-        #     sos = convert.convert_list(np.array([src_vocab.vocab.PieceToId('<s>')], dtype=np.int32), gpu_id)
-        #     eos = convert.convert_list(np.array([src_vocab.vocab.PieceToId('</s>')], dtype=np.int32), gpu_id)
-        #     src_vocab_size = len(src_vocab.vocab)
+            if pretrain_w2v:
+                w2v = word2vec.Word2Vec()
+                src_initialW, vector_size, src_match_word_count = w2v.make_initialW(src_vocab.vocab, src_w2v_file)
+                trg_initialW, vector_size, trg_match_word_count = w2v.make_initialW(trg_vocab.vocab, trg_w2v_file)
+                embed_size = vector_size
+                hidden_size = vector_size
+                logger.info('Initialize w2v embedding. Match: src {}/{}'.format(src_match_word_count, src_vocab_size))
+
+            # elif vocab_type == 'subword':
+            #     src_vocab = dataset.VocabSubword()
+            #     trg_vocab = dataset.VocabSubword()
+            #     if os.path.isfile(model_dir + 'src_vocab.sub.model'):
+            #         src_vocab.load(model_dir + 'src_vocab.sub.model')
+            #     else:
+            #         src_vocab.build(train_src_file + '.sub', model_dir + 'src_vocab.sub', vocab_size)
+            #
+            #     sos = convert.convert_list(np.array([src_vocab.vocab.PieceToId('<s>')], dtype=np.int32), gpu_id)
+            #     eos = convert.convert_list(np.array([src_vocab.vocab.PieceToId('</s>')], dtype=np.int32), gpu_id)
+            #     src_vocab_size = len(src_vocab.vocab)
 
         logger.info('V{} ## train size: {}, dev size: {},test size: {}, src_vocab size: {}, trg_vocab size: {}'.format(ite, len(t_train), len(t_dev), len(t_test), src_vocab_size, trg_vocab_size))
 
@@ -200,24 +202,6 @@ def main():
         if gpu_id >= 0:
             chainer.cuda.get_device_from_id(gpu_id).use()
             model.to_gpu()
-
-        if init_param != 0:
-            model_file = model_valid_dir + 'best_model.npz'
-            chainer.serializers.load_npz(model_file, model)
-            """TEST"""
-            labels = []
-            for i, batch in enumerate(test_iter.generate(), start=1):
-                with chainer.no_backprop_mode(), chainer.using_config('train', False):
-                    _, label, _ = model.predict(batch[0], sos, eos)
-
-                for l in label:
-                    labels.append(chainer.cuda.to_cpu(l))
-            evaluater.correct_label = c_test
-            s_rate, s_count, _, _ = evaluater.eval_param('', labels, [], init_param, -1, False)
-            print('s: {} | {}'.format(' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
-            continue
-        if init_param != 0:
-            exit()
 
         """PRETRAIN"""
         if model_type == 'pretrain':
@@ -373,11 +357,12 @@ def main():
                 with open(model_valid_dir + 'model_epoch_{}.align'.format(epoch), 'w')as f:
                     [f.write('{}\n'.format(a)) for a in alignments]
 
-            accuracy_dic[epoch] = float(s_rate[-1])
+            accuracy_dic[epoch] = [float(s_rate[-1]), s_rate]
 
         """MODEL SAVE"""
-        best_epoch = max(accuracy_dic, key=(lambda x: accuracy_dic[x]))
-        logger.info('V{} ## best_epoch:{} {}'.format(ite, best_epoch, model_dir))
+        best_epoch = max(accuracy_dic, key=(lambda x: accuracy_dic[x][0]))
+        cross_valid_result.append([ite, best_epoch, accuracy_dic[best_epoch][1]])
+        logger.info('V{} ## best_epoch:{} {}'.format(ite, best_epoch, model_valid_dir))
         chainer.serializers.save_npz(model_valid_dir + 'best_model.npz', model)
         if model_type == 'multi':
             shutil.copy(model_valid_dir + 'model_epoch_{}.label'.format(epoch), model_valid_dir + 'best_model.label')
@@ -390,6 +375,13 @@ def main():
             shutil.copy(model_valid_dir + 'model_epoch_{}.align'.format(epoch), model_valid_dir + 'best_model.aligh')
 
         logger.info('')
+
+    average_score = 0
+    for r in cross_valid_result:
+        average_score += float(r[2][-1])
+        logger.info('{}: epoch{}, {}'.format(r[0], r[1], ' '.join(r[2])))
+    average_score /= len(cross_valid_result)
+    logger.info('average score: {}'.format(average_score))
 
 
 if __name__ == '__main__':
