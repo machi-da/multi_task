@@ -12,7 +12,7 @@ import convert
 import dataset
 import evaluate
 import gridsearch
-import model_reg
+import model_supervise
 import word2vec
 
 np.set_printoptions(precision=3)
@@ -184,11 +184,11 @@ def main():
 
         """MODEL"""
         if model_type == 'multi':
-            model = model_reg.Multi(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, coefficient, src_initialW, trg_initialW)
+            model = model_supervise.Multi(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, coefficient, src_initialW, trg_initialW)
         elif model_type in ['label', 'pretrain']:
-            model = model_reg.Label(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, src_initialW, trg_initialW)
+            model = model_supervise.Label(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, src_initialW, trg_initialW)
         else:
-            model = model_reg.EncoderDecoder(src_vocab_size, trg_vocab_size, embed_size, hidden_size, dropout_ratio, src_initialW, trg_initialW)
+            model = model_supervise.EncoderDecoder(src_vocab_size, trg_vocab_size, embed_size, hidden_size, dropout_ratio, src_initialW, trg_initialW)
 
         """OPTIMIZER"""
         optimizer = chainer.optimizers.Adam()

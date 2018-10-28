@@ -142,9 +142,9 @@ class Multi(chainer.Chain):
         word_hs, word_cs, word_ys, alignment = self.wordDec(hs, cs, targets_sos, enc_ys)
 
         label_proj = self.labelClassifier(enc_ys, hs)
-        concat_label_proj = F.concat(F.concat(label_proj, axis=0), axis=0)
+        concat_label_proj = F.concat(label_proj, axis=0)
         concat_label_gold = F.concat(label_gold, axis=0)
-        loss_label = F.mean_squared_error(concat_label_proj, concat_label_gold)
+        loss_label = self.lossfun(concat_label_proj, concat_label_gold)
 
         targets_eos = F.pad_sequence(targets_eos, length=None, padding=0)
         concat_word_ys = F.concat(word_ys, axis=0)
@@ -183,7 +183,8 @@ class Multi(chainer.Chain):
         label = []
 
         for l in label_proj:
-            l = l.T.data[0]
+            l = F.softmax(l)
+            l = l.data[:, 1]
             label.append(l)
 
         hs = F.transpose(hs, (1, 0, 2))
@@ -229,9 +230,9 @@ class Label(chainer.Chain):
         hs, cs, enc_ys = self.encode(sources)
 
         label_proj = self.labelClassifier(enc_ys, hs)
-        concat_label_proj = F.concat(F.concat(label_proj, axis=0), axis=0)
+        concat_label_proj = F.concat(label_proj, axis=0)
         concat_label_gold = F.concat(label_gold, axis=0)
-        loss = F.mean_squared_error(concat_label_proj, concat_label_gold)
+        loss = self.lossfun(concat_label_proj, concat_label_gold)
 
         return loss
 
@@ -275,7 +276,8 @@ class Label(chainer.Chain):
         label = []
 
         for l in label_proj:
-            l = l.T.data[0]
+            l = F.softmax(l)
+            l = l.data[:, 1]
             label.append(l)
 
         return sentences, label, alignments

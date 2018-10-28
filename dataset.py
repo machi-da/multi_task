@@ -326,8 +326,8 @@ class SuperviseIterator:
 
     def _convert(self, src, trg, label):
         src_id = [self.src_vocab.word2id(s) for s in src]
-        trg_sos = self.src_vocab.word2id(trg, sos=True)
-        trg_eos = self.src_vocab.word2id(trg, eos=True)
+        trg_sos = self.trg_vocab.word2id(trg, sos=True)
+        trg_eos = self.trg_vocab.word2id(trg, eos=True)
         return src_id, trg_sos, trg_eos, label
 
     """
