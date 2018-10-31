@@ -272,7 +272,7 @@ def load_score_file(model_name, model_dir):
     correct = config[data_path]['test_src_file']
     correct_label, _, single_index = dataset.load_with_label_index(correct, with_single_index=True)
 
-    if model_dir.split('_')[0] == 'encdec':
+    if model_dir.split('_')[0] == 'encdec' or model_dir.split('_')[1] == 'encdec':
         raw_data = config[data_path]['raw_score_file']
         label = dataset.load_score_file(raw_data)
     else:

@@ -59,8 +59,8 @@ def main():
                 save_file = merge_dir + model
 
                 try:
-                    s_rate = gridsearch.main(save_file, label, align, correct)
-                    result_dic[model] = float(s_rate[-1])
+                    s_total = gridsearch.main(save_file, label, align, correct, [], False)
+                    result_dic[model] = s_total
                 except KeyError:
                     result_dic[model] = 0
                 except ValueError:

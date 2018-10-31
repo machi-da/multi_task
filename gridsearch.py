@@ -58,7 +58,7 @@ class GridSearch:
             detail.append(' test: {}'.format(' '.join(s_rate)))
             total = [x + float(y) for x, y in zip(total, s_rate)]
 
-        s_total = total[-1]
+        s_total = total[-1] / len(correct)
         total = ' '.join([str(round(t / len(correct), 3)) for t in total])
         detail.append('total: {}'.format(total))
 
@@ -143,17 +143,20 @@ def main(model_name, label, align, correct_label, single_index, detail_flag=True
     ev = evaluate.Evaluate(correct_label, single_index)
 
     if align_only:
+        print(len(correct_label), len(align))
         param, total, s_total, init, mix = gs.gridsearch(correct_label, align, [], detail_flag=detail_flag)
-        s_rate, s_count, m_rate, m_count = ev.eval_param(model_name, align, [], init, mix)
+        print('{}'.format(total))
+        # s_rate, s_count, m_rate, m_count = ev.eval_param(model_name, align, [], init, mix)
     else:
         param, total, s_total, init, mix = gs.gridsearch(correct_label, label, align, detail_flag=detail_flag)
-        s_rate, s_count, m_rate, m_count = ev.eval_param(model_name, label, align, init, mix)
+        print('{}'.format(total))
+        # s_rate, s_count, m_rate, m_count = ev.eval_param(model_name, label, align, init, mix)
 
-    print('init {}, mix {}'.format(init, mix))
-    print('s: {} | {}'.format(' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
+    # print('init {}, mix {}'.format(init, mix))
+    # print('s: {} | {}'.format(' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
     # print('m: {} | {}'.format(' '.join(x for x in m_rate), ' '.join(x for x in m_count)))
 
-    return s_rate
+    return s_total
 
 
 def parse_args():
