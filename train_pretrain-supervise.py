@@ -27,7 +27,6 @@ def parse_args():
     parser.add_argument('--pretrain_epoch', '-pe', type=int, default=10)
     parser.add_argument('--interval', '-i', type=int, default=100000)
     parser.add_argument('--gpu', '-g', type=int, default=-1)
-    parser.add_argument('--model', '-m', choices=['multi', 'label', 'encdec', 'pretrain'], default='multi')
     parser.add_argument('--vocab', '-v', choices=['normal', 'subword'], default='normal')
     parser.add_argument('--pretrain_w2v', '-p', action='store_true')
     parser.add_argument('--data_path', '-d', choices=['local', 'server'], default='server')
@@ -45,7 +44,6 @@ def main():
     pretrain_epoch = args.pretrain_epoch
     interval = args.interval
     gpu_id = args.gpu
-    model_type = args.model
     vocab_type = args.vocab
     pretrain_w2v = args.pretrain_w2v
     data_path = args.data_path
@@ -53,7 +51,6 @@ def main():
     """DIR PREPARE"""
     config.read(config_file)
     vocab_size = int(config['Parameter']['vocab_size'])
-    coefficient = float(config['Parameter']['coefficient'])
 
     vocab_name = vocab_type
     if pretrain_w2v:
@@ -75,7 +72,6 @@ def main():
     weight_decay = float(config['Parameter']['weight_decay'])
     gradclip = float(config['Parameter']['gradclip'])
     vocab_size = int(config['Parameter']['vocab_size'])
-    coefficient = float(config['Parameter']['coefficient'])
     """LOGGER"""
     logger = getLogger(__name__)
     logger.setLevel(logging.INFO)
@@ -191,10 +187,6 @@ def main():
                 loss.backward()
                 optimizer.update()
 
-                if i % interval == 0:
-                    logger.info('P{} ## iteration:{}, loss:{}'.format(epoch, i, train_loss))
-                    train_loss = 0
-
             except Exception as e:
                 logger.info('P{} ## iteration: {}, {}'.format(epoch, i, e))
                 with open(model_dir + 'error_log.txt', 'a')as f:
@@ -268,7 +260,6 @@ def main():
 
         """GPU"""
         if gpu_id >= 0:
-            chainer.cuda.get_device_from_id(gpu_id).use()
             model.to_gpu()
 
         """TRAIN"""
@@ -299,13 +290,12 @@ def main():
             chainer.serializers.save_npz(model_valid_dir + 'model_epoch_{}.npz'.format(epoch), model)
 
             """DEV"""
-            outputs = []
             labels = []
             alignments = []
             for i, batch in enumerate(dev_iter.generate(), start=1):
                 try:
                     with chainer.no_backprop_mode(), chainer.using_config('train', False):
-                        output, label, align = model.predict(batch[0], sos, eos)
+                        _, label, _ = model.predict(batch[0], sos, eos)
                 except Exception as e:
                     logger.info('V{} ## E{} ## dev iter: {}, {}'.format(ite, epoch, i, e))
                     with open(model_dir + 'error_log.txt', 'a')as f:
@@ -315,12 +305,8 @@ def main():
                         for b in batch[0]:
                             [f.write(src_vocab.id2word(chainer.cuda.to_cpu(bb)) + '\n') for bb in b]
 
-                for o in output:
-                    outputs.append(trg_vocab.id2word(chainer.cuda.to_cpu(o)))
                 for l in label:
                     labels.append(chainer.cuda.to_cpu(l))
-                for a in align:
-                    alignments.append(chainer.cuda.to_cpu(a))
 
             evaluater.correct_label = c_dev
 
@@ -331,13 +317,12 @@ def main():
             logger.info('V{} ## E{} ## dev tuning: {}, {}'.format(ite, epoch, k, v))
 
             """TEST"""
-            outputs = []
             labels = []
             alignments = []
             for i, batch in enumerate(test_iter.generate(), start=1):
                 try:
                     with chainer.no_backprop_mode(), chainer.using_config('train', False):
-                        output, label, align = model.predict(batch[0], sos, eos)
+                        _, label, _ = model.predict(batch[0], sos, eos)
                 except Exception as e:
                     logger.info('V{} ## E{} ## test iter: {}, {}'.format(ite, epoch, i, e))
                     with open(model_dir + 'error_log.txt', 'a')as f:
@@ -347,12 +332,8 @@ def main():
                         for b in batch[0]:
                             [f.write(src_vocab.id2word(chainer.cuda.to_cpu(bb)) + '\n') for bb in b]
 
-                for o in output:
-                    outputs.append(trg_vocab.id2word(chainer.cuda.to_cpu(o)))
                 for l in label:
                     labels.append(chainer.cuda.to_cpu(l))
-                for a in align:
-                    alignments.append(chainer.cuda.to_cpu(a))
 
             init, mix = gridsearch.parse_param(k)
             evaluater.correct_label = c_test

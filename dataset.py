@@ -330,47 +330,6 @@ class SuperviseIterator:
         trg_eos = self.trg_vocab.word2id(trg, eos=True)
         return src_id, trg_sos, trg_eos, label
 
-    """
-    def generate(self, batches_per_sort=10000):
-        gpu_id = self.gpu_id
-        src, trg, label = self.src, self.trg, self.label
-        batch_size = self.batch_size
-
-        data = []
-        for s, t, l in zip(src, trg, label):
-            data.append(self._convert(s, t, l))
-
-            if len(data) != batch_size * batches_per_sort:
-                continue
-
-            if self.sort:
-                data = sorted(data, key=lambda x: len(x[0]), reverse=True)
-            batches = [convert.convert(data[b * batch_size: (b + 1) * batch_size], gpu_id) for b in range(batches_per_sort)]
-
-            if self.shuffle:
-                random.shuffle(batches)
-
-            for batch in batches:
-                yield batch
-
-            data = []
-
-        if len(data) != 0:
-            if self.sort:
-                data = sorted(data, key=lambda x: len(x[0]), reverse=True)
-            batches = [convert.convert(data[b * batch_size: (b + 1) * batch_size], gpu_id) for b in range(int(len(data) / batch_size) + 1)]
-
-            if self.shuffle:
-                random.shuffle(batches)
-
-            for batch in batches:
-                # 補足: len(data) == batch_sizeのとき、batchesの最後に空listができてしまうための対策
-                # convertしてあるの関係で([], [], [], [])と返ってくるので、最初のリストが空かどうかで判定
-                if not batch[0]:
-                    continue
-                yield batch
-    """
-
     def _prepare_minibatch(self, src, trg, label, batch_size, gpu_id):
         data = []
         for s, t, l in zip(src, trg, label):

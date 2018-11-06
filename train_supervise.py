@@ -129,6 +129,23 @@ def main():
 
     cross_valid_result = []
     for ite in range(1, len(split_label) + 1):
+        # 5分割データ作成
+        # que_lit = []
+        # ans_lit = []
+        # for sentences, trg, clabels in zip(split_src[ite-1], split_trg[ite-1], split_correct_label[ite-1]):
+        #     que = []
+        #     que.append(','.join([str(c + 1) for c in clabels]))
+        #     ans_lit.append(''.join(trg))
+        #     for sentence in sentences:
+        #         que.append(''.join(sentence))
+        #     que_lit.append(que)
+        #
+        # with open(model_dir + 'que_valid{}.txt'.format(ite), 'w')as f:
+        #     [f.write('\t'.join(q) + '\n') for q in que_lit]
+        # with open(model_dir + 'ans_valid{}.txt'.format(ite), 'w')as f:
+        #     [f.write(a + '\n') for a in ans_lit]
+        # print(ite)
+        # continue
 
         model_valid_dir = model_dir + 'valid{}/'.format(ite)
         if not os.path.exists(model_valid_dir):
@@ -143,7 +160,7 @@ def main():
         if vocab_type == 'normal':
             src_vocab = dataset.VocabNormal()
             trg_vocab = dataset.VocabNormal()
-            if os.path.isfile(model_dir + 'src_vocab.normal.pkl') and os.path.isfile(model_dir + 'trg_vocab.normal.pkl'):
+            if os.path.isfile(model_valid_dir + 'src_vocab.normal.pkl') and os.path.isfile(model_valid_dir + 'trg_vocab.normal.pkl'):
                 src_vocab.load(model_dir + 'src_vocab.normal.pkl')
                 trg_vocab.load(model_dir + 'trg_vocab.normal.pkl')
             else:
