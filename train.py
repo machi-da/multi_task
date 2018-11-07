@@ -111,7 +111,7 @@ def main():
     src_w2v_file = config[data_path]['src_w2v_file']
     trg_w2v_file = config[data_path]['trg_w2v_file']
 
-    correct_label, _, _ = dataset.load_with_label_index(test_src_file)
+    correct_label, _, correct_index = dataset.load_with_label_index(test_src_file)
 
     train_data_size = dataset.data_size(train_src_file)
     valid_data_size = dataset.data_size(valid_src_file)
@@ -194,20 +194,20 @@ def main():
     """PRETRAIN"""
     if model_type == 'pretrain':
         logger.info('Pre-train start')
-        sum_loss = 0
+        train_loss = 0
         pretrain_loss_dic = {}
         for epoch in range(1, pretrain_epoch + 1):
             for i, batch in enumerate(train_iter.generate(), start=1):
                 try:
                     loss = model.pretrain(*batch)
-                    sum_loss += loss.data
+                    train_loss += loss.data
                     optimizer.target.cleargrads()
                     loss.backward()
                     optimizer.update()
 
                     if i % interval == 0:
-                        logger.info('P{} ## iteration:{}, loss:{}'.format(epoch, i, sum_loss))
-                        sum_loss = 0
+                        logger.info('P{} ## iteration:{}, loss:{}'.format(epoch, i, train_loss))
+                        train_loss = 0
 
                 except Exception as e:
                     logger.info('P{} ## iteration: {}, {}'.format(epoch, i, e))
@@ -230,26 +230,23 @@ def main():
         best_epoch = min(pretrain_loss_dic, key=(lambda x: pretrain_loss_dic[x]))
         logger.info('best_epoch:{}'.format(best_epoch))
         chainer.serializers.save_npz(model_dir + 'p_best_model.npz', model)
-        chainer.serializers.load_npz(model_dir + 'p_best_model.npz', model)
         logger.info('Pre-train finish')
 
     """TRAIN"""
-    sum_loss = 0
-    loss_dic = {}
     accuracy_dic = {}
-    result = ['epoch,valid_loss']
     for epoch in range(1, n_epoch + 1):
+        train_loss = 0
         for i, batch in enumerate(train_iter.generate(), start=1):
             try:
                 loss = optimizer.target(*batch)
-                sum_loss += loss.data
+                train_loss += loss.data
                 optimizer.target.cleargrads()
                 loss.backward()
                 optimizer.update()
 
                 if i % interval == 0:
-                    logger.info('E{} ## iteration:{}, loss:{}'.format(epoch, i, sum_loss))
-                    sum_loss = 0
+                    logger.info('E{} ## iteration:{}, loss:{}'.format(epoch, i, train_loss))
+                    train_loss = 0
 
             except Exception as e:
                 logger.info('E{} ## train iter: {}, {}'.format(epoch, i, e))
@@ -276,9 +273,7 @@ def main():
                     for b in batch[0]:
                         [f.write(src_vocab.id2word(chainer.cuda.to_cpu(bb)) + '\n') for bb in b]
 
-        logger.info('E{} ## val loss:{}'.format(epoch, valid_loss))
-        loss_dic[epoch] = valid_loss
-        result.append('{},{}'.format(epoch, valid_loss))
+        logger.info('E{} ## train loss: {}, val loss:{}'.format(epoch, train_loss, valid_loss))
 
         """TEST"""
         outputs = []
@@ -305,7 +300,7 @@ def main():
                 alignments.append(chainer.cuda.to_cpu(a))
 
         if model_type == 'multi':
-            param, total, s_total, init, mix = gridsearcher.gridsearch(correct_label, labels, alignments)
+            param, total, s_total, s_result_total = gridsearcher.gridsearch(correct_label, correct_index, labels, alignments)
             logger.info('E{} ## {}'.format(epoch, param))
             logger.info('E{} ## {}'.format(epoch, total))
             with open(model_dir + 'model_epoch_{}.label'.format(epoch), 'w')as f:
@@ -316,29 +311,30 @@ def main():
                 [f.write('{}\n'.format(a)) for a in alignments]
 
         elif model_type in ['label', 'pretrain']:
-            param, total, s_total, init, mix = gridsearcher.gridsearch(correct_label, labels)
+            param, total, s_total, s_result_total = gridsearcher.gridsearch(correct_label, correct_index, labels)
+            print(s_result_total)
             logger.info('E{} ## {}'.format(epoch, param))
             logger.info('E{} ## {}'.format(epoch, total))
             with open(model_dir + 'model_epoch_{}.label'.format(epoch), 'w')as f:
                 [f.write('{}\n'.format(l)) for l in labels]
 
         else:
-            param, total, s_total, init, mix = gridsearcher.gridsearch(correct_label, raw_score, alignments)
+            param, total, s_total, s_result_total = gridsearcher.gridsearch(correct_label, correct_index, raw_score, alignments)
             logger.info('E{} ## {}'.format(epoch, param))
             logger.info('E{} ## {}'.format(epoch, total))
             with open(model_dir + 'model_epoch_{}.hypo'.format(epoch), 'w')as f:
                 [f.write(o + '\n') for o in outputs]
             with open(model_dir + 'model_epoch_{}.align'.format(epoch), 'w')as f:
                 [f.write('{}\n'.format(a)) for a in alignments]
+
         accuracy_dic[epoch] = s_total
+        with open(model_dir + 'model_epoch_{}.s_res.txt'.format(epoch), 'w')as f:
+            [f.write('{}\t{}\n'.format(l[0], l[1])) for l in sorted(s_result_total, key=lambda x: x[0])]
 
     """MODEL SAVE"""
     best_epoch = max(accuracy_dic, key=(lambda x: accuracy_dic[x]))
     logger.info('best_epoch:{}, score: {}, {}'.format(best_epoch, accuracy_dic[best_epoch], model_dir))
     chainer.serializers.save_npz(model_dir + 'best_model.npz', model)
-
-    with open(model_dir + 'valid_loss.csv', 'w')as f:
-        [f.write(r + '\n') for r in result]
 
 
 if __name__ == '__main__':

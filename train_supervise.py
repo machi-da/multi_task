@@ -105,8 +105,8 @@ def main():
     valid_trg_file = config[data_path]['valid_trg_file']
     test_src_file = config[data_path]['single_src_file']
     test_trg_file = config[data_path]['single_trg_file']
-    raw_score_file = config[data_path]['raw_score_single_file']
-    raw_score_data = dataset.load_score_file(raw_score_file)
+    # raw_score_file = config[data_path]['raw_score_single_file']
+    # raw_score_data = dataset.load_score_file(raw_score_file)
     src_w2v_file = config[data_path]['src_w2v_file']
     trg_w2v_file = config[data_path]['trg_w2v_file']
 
@@ -116,18 +116,20 @@ def main():
     valid_num = 5
     label_data, src_data = dataset.load_with_label_binary(test_src_file)
     trg_data = dataset.load(test_trg_file)
-    correct_label_data, _, _ = dataset.load_with_label_index(test_src_file)
+    correct_label_data, _, correct_index_data = dataset.load_with_label_index(test_src_file)
     slice_size = len(label_data) // valid_num
 
-    label_data, src_data, trg_data, raw_score_data, correct_label_data = gridsearch.shuffle_list(label_data, src_data, trg_data, raw_score_data, correct_label_data)
+    label_data, src_data, trg_data, correct_label_data, correct_index_data = \
+        gridsearch.shuffle_list(label_data, src_data, trg_data, correct_label_data, correct_index_data)
 
     split_label = gridsearch.slice_list(label_data, slice_size)
     split_src = gridsearch.slice_list(src_data, slice_size)
     split_trg = gridsearch.slice_list(trg_data, slice_size)
-    split_raw_score = gridsearch.slice_list(raw_score_data, slice_size)
     split_correct_label = gridsearch.slice_list(correct_label_data, slice_size)
+    split_correct_index = gridsearch.slice_list(correct_index_data, slice_size)
 
     cross_valid_result = []
+    s_result_total = []
     for ite in range(1, len(split_label) + 1):
         # 5分割データ作成
         # que_lit = []
@@ -154,8 +156,8 @@ def main():
         l_train, l_dev, l_test = gridsearch.split_train_dev_test(split_label, ite - 1)
         s_train, s_dev, s_test = gridsearch.split_train_dev_test(split_src, ite - 1)
         t_train, t_dev, t_test = gridsearch.split_train_dev_test(split_trg, ite - 1)
-        r_train, r_dev, r_test = gridsearch.split_train_dev_test(split_raw_score, ite - 1)
         c_train, c_dev, c_test = gridsearch.split_train_dev_test(split_correct_label, ite - 1)
+        ci_train, ci_dev, ci_test = gridsearch.split_train_dev_test(split_correct_index, ite - 1)
 
         if vocab_type == 'normal':
             src_vocab = dataset.VocabNormal()
@@ -228,20 +230,20 @@ def main():
         """PRETRAIN"""
         if model_type == 'pretrain':
             logger.info('Pre-train start')
-            sum_loss = 0
             pretrain_loss_dic = {}
             for epoch in range(1, pretrain_epoch + 1):
+                train_loss = 0
                 for i, batch in enumerate(train_iter.generate(), start=1):
                     try:
                         loss = model.pretrain(*batch)
-                        sum_loss += loss.data
+                        train_loss += loss.data
                         optimizer.target.cleargrads()
                         loss.backward()
                         optimizer.update()
 
                         if i % interval == 0:
-                            logger.info('V{} ## P{} ## iteration:{}, loss:{}'.format(ite, epoch, i, sum_loss))
-                            sum_loss = 0
+                            logger.info('V{} ## P{} ## iteration:{}, loss:{}'.format(ite, epoch, i, train_loss))
+                            train_loss = 0
 
                     except Exception as e:
                         logger.info('V{} ## P{} ## iteration: {}, {}'.format(ite, epoch, i, e))
@@ -257,31 +259,31 @@ def main():
                 for batch in dev_iter.generate():
                     with chainer.no_backprop_mode(), chainer.using_config('train', False):
                         valid_loss += model.pretrain(*batch).data
-                logger.info('V{} ## P{} ## val loss:{}'.format(ite, epoch, valid_loss))
+                logger.info('V{} ## P{} ## train loss: {}, val loss:{}'.format(ite, epoch, train_loss, valid_loss))
                 pretrain_loss_dic[epoch] = valid_loss
 
             """MODEL SAVE & LOAD"""
             best_epoch = min(pretrain_loss_dic, key=(lambda x: pretrain_loss_dic[x]))
             logger.info('best_epoch:{}'.format(best_epoch))
             chainer.serializers.save_npz(model_valid_dir + 'p_best_model.npz', model)
-            chainer.serializers.load_npz(model_valid_dir + 'p_best_model.npz', model)
             logger.info('Pre-train finish')
 
         """TRAIN"""
-        sum_loss = 0
         accuracy_dic = {}
+        s_result_dic = {}
         for epoch in range(1, n_epoch + 1):
+            train_loss = 0
             for i, batch in enumerate(train_iter.generate(), start=1):
                 try:
                     loss = optimizer.target(*batch)
-                    sum_loss += loss.data
+                    train_loss += loss.data
                     optimizer.target.cleargrads()
                     loss.backward()
                     optimizer.update()
 
                     if i % interval == 0:
-                        logger.info('V{} ## E{} ## iteration:{}, loss:{}'.format(ite, epoch, i, sum_loss))
-                        sum_loss = 0
+                        logger.info('V{} ## E{} ## iteration:{}, loss:{}'.format(ite, epoch, i, train_loss))
+                        train_loss = 0
 
                 except Exception as e:
                     logger.info('V{} ## E{} ## train iter: {}, {}'.format(ite, epoch, i, e))
@@ -291,8 +293,7 @@ def main():
                         f.write('V{} ## E{} ## [batch detail]'.format(ite, epoch))
                         for b in batch[0]:
                             [f.write(src_vocab.id2word(chainer.cuda.to_cpu(bb)) + '\n') for bb in b]
-            logger.info('V{} ## E{} ## train loss:{}'.format(ite, epoch, sum_loss))
-            sum_loss = 0
+            logger.info('V{} ## E{} ## train loss:{}'.format(ite, epoch, train_loss))
             chainer.serializers.save_npz(model_valid_dir + 'model_epoch_{}.npz'.format(epoch), model)
 
             """DEV"""
@@ -319,12 +320,10 @@ def main():
                 for a in align:
                     alignments.append(chainer.cuda.to_cpu(a))
 
-            evaluater.correct_label = c_dev
-
             if model_type in ['multi', 'label', 'pretrain']:
-                best_param_dic = evaluater.param_search(labels, alignments)
+                best_param_dic = evaluater.param_search(labels, alignments, c_dev)
             else:
-                best_param_dic = evaluater.param_search(r_dev, alignments)
+                best_param_dic = evaluater.param_search(alignments, [], c_dev)
 
             k = max(best_param_dic, key=lambda x: best_param_dic[x])
             v = best_param_dic[k]
@@ -354,9 +353,9 @@ def main():
                 for a in align:
                     alignments.append(chainer.cuda.to_cpu(a))
 
-            init, mix = gridsearch.parse_param(k)
-            evaluater.correct_label = c_test
-            s_rate, s_count, m_rate, m_count = evaluater.eval_param(model_valid_dir + 'test', r_test, alignments, init, mix, False)
+            init, mix = evaluate.key_to_param(k)
+            s_rate, s_count, m_rate, m_count, s_result = evaluater.eval_param(labels, alignments, c_test, ci_test, init, mix)
+            s_result_dic[epoch] = s_result
             logger.info('V{} ## E{} ## {}'.format(ite, epoch, ' '.join(s_rate)))
             # logger.info('V{} ## E{} ## {}'.format(ite, epoch, ' '.join(s_count)))
 
@@ -380,6 +379,7 @@ def main():
 
         """MODEL SAVE"""
         best_epoch = max(accuracy_dic, key=(lambda x: accuracy_dic[x][0]))
+        s_result_total.extend(s_result_dic[best_epoch])
         cross_valid_result.append([ite, best_epoch, accuracy_dic[best_epoch][1]])
         logger.info('V{} ## best_epoch:{} {}'.format(ite, best_epoch, model_valid_dir))
         chainer.serializers.save_npz(model_valid_dir + 'best_model.npz', model)
@@ -401,6 +401,9 @@ def main():
         logger.info('{}: epoch{}, {}'.format(r[0], r[1], ' '.join(r[2])))
     average_score /= len(cross_valid_result)
     logger.info('average score: {}'.format(average_score))
+
+    with open(model_dir + 's_res.txt', 'w')as f:
+        [f.write('{}\t{}\n'.format(l[0], l[1])) for l in sorted(s_result_total, key=lambda x: x[0])]
 
 
 if __name__ == '__main__':

@@ -58,7 +58,7 @@ def load_with_label_reg(file_name):
     return label_lit, text
 
 
-def load_with_label_index(file_name, with_single_index=False):
+def load_with_label_index(file_name):
     label_lit = []
     text = []
     single_index = []
@@ -76,12 +76,10 @@ def load_with_label_index(file_name, with_single_index=False):
             t.append(sentence.split(' '))
         text.append(t)
 
-    if with_single_index:
-        for i, d in enumerate(data, start=1):
-            label = d.split('\t')[0].split(',')
-            if len(label) == 1 and label[0] != '0':
-                single_index.append(str(i))
-        single_index = ','.join(single_index)
+    for i, d in enumerate(data, start=1):
+        label = d.split('\t')[0].split(',')
+        if len(label) == 1 and label[0] != '0':
+            single_index.append(i)
 
     return label_lit, text, single_index
 

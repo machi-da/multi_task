@@ -10,43 +10,40 @@ import dataset
 
 
 class Evaluate:
-    def __init__(self, correct_label=[], single_index=''):
-        self.correct_label = correct_label
-        self.single_index = single_index
-        self.single_result = None
-
-    def save_single_result(self, file_name):
+    def save_single_result(self, file_name, init, mix):
         print('save single result: {}'.format(file_name))
+        key = param_to_key(init, mix)
         with open(file_name, 'w')as f:
-            f.write(self.single_index + '\n')
-            f.write(self.single_result + '\n')
+            for i, r in zip(self.single_index, self.single_result_dic[key].values()):
+                f.write('{}:\t{}\n'.format(i, r))
         return
 
-    def label(self, label_list):
+    def label(self, label_list, correct_label_list, correct_index_list, multi_sentence_score=False):
         label_data = copy.deepcopy(label_list)
         rank_list = []
-        for label, correct in zip(label_data, self.correct_label):
+        for label, clabel in zip(label_data, correct_label_list):
             rank = []
             for _ in range(len(label)):
                 index = label.argmax()
-                if index in correct:
+                if index in clabel:
                     rank.append((index, True))
                 else:
                     rank.append((index, False))
                 label[index] = -1000
             rank_list.append(rank)
 
-        method = 'normal'
-        s_rate, s_count, s_result = self.single(rank_list, method)
-        self.single_result = s_result
-        m_rate, m_count = self.multiple(rank_list)
+        s_rate, s_count, s_result = self.single(rank_list, correct_index_list)
+        m_rate, m_count = [], []
 
-        return s_rate, s_count, m_rate, m_count
+        if multi_sentence_score:
+            m_rate, m_count = self.multiple(rank_list)
 
-    def label_init(self, label_list, init_threshold=0.7):
+        return s_rate, s_count, m_rate, m_count, s_result
+
+    def label_init(self, label_list, correct_label_list, correct_index_list, init_threshold=0.7, multi_sentence_score=False):
         label_data = copy.deepcopy(label_list)
         rank_list = []
-        for label, correct in zip(label_data, self.correct_label):
+        for label, clabel in zip(label_data, correct_label_list):
             rank = []
             true_index = list(np.where(label >= init_threshold)[0])
             for _ in range(len(label)):
@@ -55,7 +52,7 @@ class Evaluate:
                 # 先頭を優先
                 if len(true_index) > 0:
                     if index != true_index[0]:
-                        if true_index[0] in correct:
+                        if true_index[0] in clabel:
                             rank.append((true_index[0], True))
                         else:
                             rank.append((true_index[0], False))
@@ -63,7 +60,7 @@ class Evaluate:
                         true_index = true_index[1:]
                         continue
 
-                if index in correct:
+                if index in clabel:
                     rank.append((index, True))
                 else:
                     rank.append((index, False))
@@ -72,44 +69,44 @@ class Evaluate:
                     true_index.remove(index)
             rank_list.append(rank)
 
-        method = 'init_{}'.format(init_threshold)
-        s_rate, s_count, s_result = self.single(rank_list, method)
-        self.single_result = s_result
-        m_rate, m_count = self.multiple(rank_list)
+        s_rate, s_count, s_result = self.single(rank_list, correct_index_list)
+        m_rate, m_count = [], []
 
-        return s_rate, s_count, m_rate, m_count
+        if multi_sentence_score:
+            m_rate, m_count = self.multiple(rank_list)
 
-    def label_mix_align(self, label_list, align_list, weight=0.5):
+        return s_rate, s_count, m_rate, m_count, s_result
+
+    def label_mix_align(self, label_list, align_list, correct_label_list, correct_index_list, weight=0.5, multi_sentence_score=False):
         label_data = copy.deepcopy(label_list)
         rank_list = []
-        for label, correct, align in zip(label_data, self.correct_label, align_list):
+        for label, clabel, align in zip(label_data, correct_label_list, align_list):
             label = weight * label + (1 - weight) * align
             rank = []
             for _ in range(len(label)):
                 index = label.argmax()
 
-                if index in correct:
+                if index in clabel:
                     rank.append((index, True))
                 else:
                     rank.append((index, False))
                 label[index] = -1000
             rank_list.append(rank)
 
-        method = 'mix_{}'.format(weight)
-        s_rate, s_count, s_result = self.single(rank_list, method)
-        self.single_result = s_result
-        m_rate, m_count = self.multiple(rank_list)
+        s_rate, s_count, s_result = self.single(rank_list, correct_index_list)
+        m_rate, m_count = [], []
 
-        return s_rate, s_count, m_rate, m_count
+        if multi_sentence_score:
+            m_rate, m_count = self.multiple(rank_list)
 
-    def label_mix_aligh_init(self, label_list, align_list, init_threshold=0.7, weight=0.5):
+        return s_rate, s_count, m_rate, m_count, s_result
+
+    def label_mix_aligh_init(self, label_list, align_list, correct_label_list, correct_index_list, init_threshold=0.7, weight=0.5, multi_sentence_score=False):
         label_data = copy.deepcopy(label_list)
         rank_list = []
-        for label, correct, align in zip(label_data, self.correct_label, align_list):
+        for label, clabel, align in zip(label_data, correct_label_list, align_list):
             label = weight * label + (1 - weight) * align
-            # label = label * align
             rank = []
-            # threshold = init_threshold + (len(label) - 1)
             true_index = list(np.where(label >= init_threshold)[0])
             for _ in range(len(label)):
                 index = label.argmax()
@@ -117,7 +114,7 @@ class Evaluate:
                 # 先頭を優先
                 if len(true_index) > 0:
                     if index != true_index[0]:
-                        if true_index[0] in correct:
+                        if true_index[0] in clabel:
                             rank.append((true_index[0], True))
                         else:
                             rank.append((true_index[0], False))
@@ -125,7 +122,7 @@ class Evaluate:
                         true_index = true_index[1:]
                         continue
 
-                if index in correct:
+                if index in clabel:
                     rank.append((index, True))
                 else:
                     rank.append((index, False))
@@ -134,37 +131,55 @@ class Evaluate:
                     true_index.remove(index)
             rank_list.append(rank)
 
-        method = 'init_{} mix_{}'.format(init_threshold, weight)
-        s_rate, s_count, s_result = self.single(rank_list, method)
-        self.single_result = s_result
-        m_rate, m_count = self.multiple(rank_list)
+        s_rate, s_count, s_result = self.single(rank_list, correct_index_list)
+        m_rate, m_count = [], []
 
-        return s_rate, s_count, m_rate, m_count
+        if multi_sentence_score:
+            m_rate, m_count = self.multiple(rank_list)
 
-    def single(self, rank_list, method):
+        return s_rate, s_count, m_rate, m_count, s_result
+
+    def single(self, rank_list, correct_index_list):
         score_dic = {2: [0, 0], 3: [0, 0], 4: [0, 0], 5: [0, 0], 6: [0, 0], 7: [0, 0]}
-        result = [method]
-        # sentence_num = ['-', '-']
-        for index, r in enumerate(rank_list, start=1):
-            sent_num = len(r)
-            # 正解ラベルの数: correct_num
-            count_num = 0
-            for rr in r:
-                if rr[1]:
-                    count_num += 1
-            # 正解した数: correct
-            correct = 0
-            for i in range(count_num):
-                if r[i][1]:
-                    correct += 1
-            if count_num == 1 or count_num == 0:
-                score_dic[sent_num][1] += 1
-                if correct:
-                    score_dic[sent_num][0] += 1
-                    result.append('1')
-                else:
-                    result.append('0')
-                # sentence_num.append(str(sent_num))
+        result = []
+
+        if correct_index_list:
+            for index, (r, cindex) in enumerate(zip(rank_list, correct_index_list), start=1):
+                sent_num = len(r)
+                # 正解ラベルの数: correct_num
+                count_num = 0
+                for rr in r:
+                    if rr[1]:
+                        count_num += 1
+                # 正解した数: correct
+                correct = 0
+                for i in range(count_num):
+                    if r[i][1]:
+                        correct += 1
+                if count_num == 1 or count_num == 0:
+                    score_dic[sent_num][1] += 1
+                    if correct:
+                        score_dic[sent_num][0] += 1
+                        result.append([cindex, 'T'])
+                    else:
+                        result.append([cindex, 'F'])
+        else:
+            for index, r in enumerate(rank_list, start=1):
+                sent_num = len(r)
+                # 正解ラベルの数: correct_num
+                count_num = 0
+                for rr in r:
+                    if rr[1]:
+                        count_num += 1
+                # 正解した数: correct
+                correct = 0
+                for i in range(count_num):
+                    if r[i][1]:
+                        correct += 1
+                if count_num == 1 or count_num == 0:
+                    score_dic[sent_num][1] += 1
+                    if correct:
+                        score_dic[sent_num][0] += 1
 
         t_correct, t = sum([v[0] for k, v in score_dic.items()]), sum([v[1] for k, v in score_dic.items()])
         for v in score_dic.values():
@@ -175,11 +190,6 @@ class Evaluate:
         rate.append(str(round(micro_rate, 3)))
         count = ['{}/{}'.format(v[0], v[1]) for k, v in score_dic.items()]
         count.append('{}/{}'.format(t_correct, t))
-
-        result.insert(1, str(rate[-1]))
-        result = ','.join(result)
-        # sentence_num = ','.join(sentence_num)
-        # self.single_result.append(sentence_num)
 
         return rate, count, result
 
@@ -210,56 +220,77 @@ class Evaluate:
         count.append('{}/{}'.format(t_correct, t))
         return rate, count
 
-    def param_search(self, label_list, align_list):
+    def param_search(self, label_list, align_list, correct_label_list):
         best_param_dic = {}
 
-        s_rate, _, _, _ = self.label(label_list)
+        s_rate, _, _, _, _ = self.label(label_list, correct_label_list, [])
         key = 'normal'
         best_param_dic[key] = s_rate[-1]
-        # print('{}\t{}'.format(key, ' '.join(s_rate)))
 
         # range: 1~9
         for i in range(1, 10):
             init_threshold = round(i * 0.1, 1)
-            s_rate, _, _, _ = self.label_init(label_list, init_threshold)
+            s_rate, _, _, _, _ = self.label_init(label_list, correct_label_list, [], init_threshold)
             key = 'init {}'.format(init_threshold)
             best_param_dic[key] = s_rate[-1]
-            # print('{}\t{}'.format(key, ' '.join(s_rate)))
 
         if align_list:
             for i in range(1, 10):
                 weight = round(i * 0.1, 1)
-                s_rate, _, _, _ = self.label_mix_align(label_list, align_list, weight)
+                s_rate, _, _, _, _ = self.label_mix_align(label_list, align_list, correct_label_list, [], weight)
                 key = 'mix {}'.format(weight)
                 best_param_dic[key] = s_rate[-1]
-                # print('{}\t{}'.format(key, ' '.join(s_rate)))
 
             for i in range(1, 10):
                 weight = round(i * 0.1, 1)
                 for j in range(1, 10):
                     init_threshold = round(j * 0.1, 1)
-                    s_rate, _, _, _ = self.label_mix_aligh_init(label_list, align_list, init_threshold, weight)
+                    s_rate, _, _, _, _ = self.label_mix_aligh_init(label_list, align_list, correct_label_list, [], init_threshold, weight)
                     key = 'init {} mix {}'.format(init_threshold, weight)
                     best_param_dic[key] = s_rate[-1]
-                    # print('{}\t{}'.format(key, ' '.join(s_rate)))
 
         return best_param_dic
 
-    def eval_param(self, model_name, label, align, init=-1, mix=-1, save=True):
+    def eval_param(self, label_list, align_list, correct_label_list, correct_index_list, init=-1, mix=-1):
         if init == -1:
             if mix == -1:
-                s_rate, s_count, m_rate, m_count = self.label(label)
+                s_rate, s_count, m_rate, m_count, s_result = self.label(label_list, correct_label_list, correct_index_list)
             else:
-                s_rate, s_count, m_rate, m_count = self.label_mix_align(label, align, mix)
+                s_rate, s_count, m_rate, m_count, s_result = self.label_mix_align(label_list, align_list, correct_label_list, correct_index_list, mix)
         else:
             if mix == -1:
-                s_rate, s_count, m_rate, m_count = self.label_init(label, init)
+                s_rate, s_count, m_rate, m_count, s_result = self.label_init(label_list, correct_label_list, correct_index_list, init)
             else:
-                s_rate, s_count, m_rate, m_count = self.label_mix_aligh_init(label, align, init, mix)
+                s_rate, s_count, m_rate, m_count, s_result = self.label_mix_aligh_init(label_list, align_list, correct_label_list, correct_index_list, init, mix)
 
-        if save:
-            self.save_single_result(model_name + '.s_res.csv')
-        return s_rate, s_count, m_rate, m_count
+        return s_rate, s_count, m_rate, m_count, s_result
+
+
+def param_to_key(init, mix):
+    if init == -1:
+        if mix == -1:
+            return 'normal'
+        else:
+            return 'mix {}'.format(mix)
+    else:
+        if mix == -1:
+            return 'init {}'.format(init)
+        else:
+            return 'init {} mix {}'.format(init, mix)
+
+
+def key_to_param(key):
+    k = key.split(' ')
+
+    if len(k) == 1:
+        return -1, -1
+    elif len(k) == 2:
+        if k[0] == 'init':
+            return float(k[1]), -1
+        else:
+            return -1, float(k[1])
+    else:
+        return float(k[1]), float(k[3])
 
 
 def load_score_file(model_name, model_dir):
@@ -268,11 +299,11 @@ def load_score_file(model_name, model_dir):
     config = configparser.ConfigParser()
     config.read(config_file)
 
-    data_path = 'local' if model_dir.split('_')[2] == 'l' else 'server'
+    data_path = 'local' if 'l' in model_dir.split('_') else 'server'
     correct = config[data_path]['test_src_file']
-    correct_label, _, single_index = dataset.load_with_label_index(correct, with_single_index=True)
+    correct_label, _, correct_index = dataset.load_with_label_index(correct)
 
-    if model_dir.split('_')[0] == 'encdec' or model_dir.split('_')[1] == 'encdec':
+    if 'encdec' in model_dir.split('_'):
         raw_data = config[data_path]['raw_score_file']
         label = dataset.load_score_file(raw_data)
     else:
@@ -284,7 +315,7 @@ def load_score_file(model_name, model_dir):
     if os.path.isfile(align_file):
         align = dataset.load_score_file(align_file)
 
-    return label, align, correct_label, single_index
+    return label, align, correct_label, correct_index
 
 
 def parse_args():
@@ -303,9 +334,9 @@ if __name__ == '__main__':
     mix = args.mix
     model_dir = re.search(r'^(.*/)', model_name).group(1)
 
-    label, align, correct_label, single_index = load_score_file(model_name, model_dir)
-    ev = Evaluate(correct_label, single_index)
-    s_rate, s_count, m_rate, m_count = ev.eval_param(model_name, label, align, init, mix)
+    label, align, correct_label, correct_index = load_score_file(model_name, model_dir)
+    ev = Evaluate()
+    s_rate, s_count, m_rate, m_count, s_result = ev.eval_param(label, align, correct_label, correct_index, init, mix)
 
     print('s: {} | {}'.format(' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
     # print('m: {} | {}'.format(' '.join(x for x in m_rate), ' '.join(x for x in m_count)))

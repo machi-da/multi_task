@@ -13,65 +13,60 @@ class GridSearch:
         self.ev = evaluate.Evaluate()
         self.valid_num = valid_num
 
-        self.result_log = []
+        self.result_detail = None
 
-    def gridsearch(self, correct_label, label_list, align_list=None, detail_flag=False):
+    def print_detail(self):
+        for r in self.result_detail:
+            print(r)
+
+    def gridsearch(self, correct_label_list, correct_index_list, label_list, align_list=None):
+        self.result_detail = []
         param = []
         total = [0, 0, 0, 0, 0, 0, 0]
-        detail = []
 
-        slice_size = len(correct_label) // self.valid_num
+        slice_size = len(correct_label_list) // self.valid_num
 
         if align_list:
-            c_data, l_data, a_data = shuffle_list(correct_label, label_list, align_list)
+            c_data, ci_data, l_data, a_data = shuffle_list(correct_label_list, correct_index_list, label_list, align_list)
             align = slice_list(a_data, slice_size)
         else:
-            c_data, l_data = shuffle_list(correct_label, label_list)
+            c_data, ci_data, l_data = shuffle_list(correct_label_list, correct_index_list, label_list)
 
         correct = slice_list(c_data, slice_size)
+        correct_index = slice_list(ci_data, slice_size)
         label = slice_list(l_data, slice_size)
 
+        s_result_total = []
         for i in range(len(correct)):
             c_dev, c_test = split_dev_test(correct, i)
+            ci_dev, ci_test = split_dev_test(correct_index, i)
             l_dev, l_test = split_dev_test(label, i)
             a_dev, a_test = [], []
             if align_list:
                 a_dev, a_test = split_dev_test(align, i)
 
-            self.ev.correct_label = c_dev
-            best_param_dic = self.ev.param_search(l_dev, a_dev)
+            best_param_dic = self.ev.param_search(l_dev, a_dev, c_dev)
             k = max(best_param_dic, key=lambda x: best_param_dic[x])
             v = best_param_dic[k]
             param.append(k)
-            detail.append('{} dev: {} {}'.format(i + 1, k, v))
-            self.ev.correct_label = c_test
-            k = k.split(' ')
-            if len(k) == 1:
-                s_rate, s_count, m_rate, m_count = self.ev.label(l_test)
-            elif len(k) == 2:
-                if k[0] == 'init':
-                    s_rate, s_count, m_rate, m_count = self.ev.label_init(l_test, float(k[1]))
-                else:
-                    s_rate, s_count, m_rate, m_count = self.ev.label_mix_align(l_test, a_test, float(k[1]))
-            else:
-                s_rate, s_count, m_rate, m_count = self.ev.label_mix_aligh_init(l_test, a_test, float(k[1]), float(k[3]))
-            detail.append(' test: {}'.format(' '.join(s_rate)))
+            self.result_detail.append('{} dev: {} {}'.format(i + 1, k, v))
+            init, mix = evaluate.key_to_param(k)
+            s_rate, s_count, m_rate, m_count, s_result = self.ev.eval_param(l_test, a_test, c_test, ci_test, init, mix)
+            s_result_total.extend(s_result)
+
+            self.result_detail.append(' test: {}'.format(' '.join(s_rate)))
             total = [x + float(y) for x, y in zip(total, s_rate)]
 
         s_total = total[-1] / len(correct)
         total = ' '.join([str(round(t / len(correct), 3)) for t in total])
-        detail.append('total: {}'.format(total))
+        self.result_detail.append('total: {}'.format(total))
 
         c_param = Counter(param)
         best_param = max(c_param, key=lambda x: c_param[x])
-        init, mix = parse_param(best_param)
+        init, mix = evaluate.key_to_param(best_param)
 
-        if detail_flag:
-            for d in detail:
-                print(d)
-
-        # パラメータ, スコア, スコアの合計
-        return '|'.join(param), total, s_total, init, mix
+        # パラメータ, スコア, スコアの平均, スコアの詳細
+        return '|'.join(param), total, s_total, s_result_total
 
 
 def slice_list(lit, slice_size):
@@ -116,45 +111,17 @@ def shuffle_list(*args):
     return shuffled_list
 
 
-def parse_param(param):
-    init = -1
-    mix  = -1
-    param = param.split(' ')
-    # normal
-    if len(param) == 1:
-        return init, mix
-    # init or mix
-    if len(param) == 2:
-        if param[0] == 'init':
-            init = float(param[1])
-            return init, mix
-        elif param[0] == 'mix':
-            mix = float(param[1])
-            return init, mix
-    # init and mix
-    init = float(param[1])
-    mix = float(param[3])
-
-    return init, mix
-
-
-def main(model_name, label, align, correct_label, single_index, detail_flag=True, align_only=False):
+def main(label, align, correct_label, correct_index, align_only=False):
     gs = GridSearch(valid_num=5)
-    ev = evaluate.Evaluate(correct_label, single_index)
 
     if align_only:
-        print(len(correct_label), len(align))
-        param, total, s_total, init, mix = gs.gridsearch(correct_label, align, [], detail_flag=detail_flag)
+        param, total, s_total, init, mix = gs.gridsearch(correct_label, correct_index, align, [])
+        gs.print_detail()
         print('{}'.format(total))
-        # s_rate, s_count, m_rate, m_count = ev.eval_param(model_name, align, [], init, mix)
     else:
-        param, total, s_total, init, mix = gs.gridsearch(correct_label, label, align, detail_flag=detail_flag)
+        param, total, s_total, init, mix = gs.gridsearch(correct_label, correct_index, label, align)
+        gs.print_detail()
         print('{}'.format(total))
-        # s_rate, s_count, m_rate, m_count = ev.eval_param(model_name, label, align, init, mix)
-
-    # print('init {}, mix {}'.format(init, mix))
-    # print('s: {} | {}'.format(' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
-    # print('m: {} | {}'.format(' '.join(x for x in m_rate), ' '.join(x for x in m_count)))
 
     return s_total
 
@@ -173,6 +140,6 @@ if __name__ == '__main__':
     model_dir = re.search(r'^(.*/)', model_name).group(1)
     align_only = args.align_only
 
-    label, align, correct_label, single_index = evaluate.load_score_file(model_name, model_dir)
+    label, align, correct_label, correct_index = evaluate.load_score_file(model_name, model_dir)
 
-    main(model_name, label, align, correct_label, single_index, align_only, align_only)
+    main(label, align, correct_label, correct_index, align_only)
