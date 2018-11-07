@@ -163,8 +163,8 @@ def main():
             src_vocab = dataset.VocabNormal()
             trg_vocab = dataset.VocabNormal()
             if os.path.isfile(model_valid_dir + 'src_vocab.normal.pkl') and os.path.isfile(model_valid_dir + 'trg_vocab.normal.pkl'):
-                src_vocab.load(model_dir + 'src_vocab.normal.pkl')
-                trg_vocab.load(model_dir + 'trg_vocab.normal.pkl')
+                src_vocab.load(model_valid_dir + 'src_vocab.normal.pkl')
+                trg_vocab.load(model_valid_dir + 'trg_vocab.normal.pkl')
             else:
                 init_vocab = {'<pad>': 0, '<unk>': 1, '<s>': 2, '</s>': 3}
                 src_vocab.build(s_train, False, init_vocab, vocab_size)

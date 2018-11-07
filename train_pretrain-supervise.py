@@ -30,6 +30,7 @@ def parse_args():
     parser.add_argument('--vocab', '-v', choices=['normal', 'subword'], default='normal')
     parser.add_argument('--pretrain_w2v', '-p', action='store_true')
     parser.add_argument('--data_path', '-d', choices=['local', 'server'], default='server')
+    parser.add_argument('--load_model', '-l', type=str, default='')
     args = parser.parse_args()
     return args
 
@@ -47,6 +48,7 @@ def main():
     vocab_type = args.vocab
     pretrain_w2v = args.pretrain_w2v
     data_path = args.data_path
+    load_model = args.load_model
 
     """DIR PREPARE"""
     config.read(config_file)
@@ -175,40 +177,41 @@ def main():
         model.to_gpu()
 
     """PRETRAIN"""
-    logger.info('Pre-train start')
-    pretrain_loss_dic = {}
-    for epoch in range(1, pretrain_epoch + 1):
-        train_loss = 0
-        for i, batch in enumerate(train_iter.generate(), start=1):
-            try:
-                loss = model.pretrain(*batch)
-                train_loss += loss.data
-                optimizer.target.cleargrads()
-                loss.backward()
-                optimizer.update()
+    if load_model == '':
+        logger.info('Pre-train start')
+        pretrain_loss_dic = {}
+        for epoch in range(1, pretrain_epoch + 1):
+            train_loss = 0
+            for i, batch in enumerate(train_iter.generate(), start=1):
+                try:
+                    loss = model.pretrain(*batch)
+                    train_loss += loss.data
+                    optimizer.target.cleargrads()
+                    loss.backward()
+                    optimizer.update()
 
-            except Exception as e:
-                logger.info('P{} ## iteration: {}, {}'.format(epoch, i, e))
-                with open(model_dir + 'error_log.txt', 'a')as f:
-                    f.write('P{} ## iteration {}\n'.format(epoch, i))
-                    f.write(traceback.format_exc())
-                    for b in batch[0]:
-                        [f.write(src_vocab.id2word(chainer.cuda.to_cpu(bb)) + '\n') for bb in b]
-        chainer.serializers.save_npz(model_dir + 'p_model_epoch_{}.npz'.format(epoch), model)
+                except Exception as e:
+                    logger.info('P{} ## iteration: {}, {}'.format(epoch, i, e))
+                    with open(model_dir + 'error_log.txt', 'a')as f:
+                        f.write('P{} ## iteration {}\n'.format(epoch, i))
+                        f.write(traceback.format_exc())
+                        for b in batch[0]:
+                            [f.write(src_vocab.id2word(chainer.cuda.to_cpu(bb)) + '\n') for bb in b]
+            chainer.serializers.save_npz(model_dir + 'p_model_epoch_{}.npz'.format(epoch), model)
 
-        """EVALUATE"""
-        valid_loss = 0
-        for batch in valid_iter.generate():
-            with chainer.no_backprop_mode(), chainer.using_config('train', False):
-                valid_loss += model.pretrain(*batch).data
-        logger.info('P{} ## train loss: {}, val loss:{}'.format(epoch, train_loss, valid_loss))
-        pretrain_loss_dic[epoch] = valid_loss
+            """EVALUATE"""
+            valid_loss = 0
+            for batch in valid_iter.generate():
+                with chainer.no_backprop_mode(), chainer.using_config('train', False):
+                    valid_loss += model.pretrain(*batch).data
+            logger.info('P{} ## train loss: {}, val loss:{}'.format(epoch, train_loss, valid_loss))
+            pretrain_loss_dic[epoch] = valid_loss
 
-    """MODEL SAVE & LOAD"""
-    best_epoch = min(pretrain_loss_dic, key=(lambda x: pretrain_loss_dic[x]))
-    logger.info('best_epoch:{}'.format(best_epoch))
-    chainer.serializers.save_npz(model_dir + 'p_best_model.npz', model)
-    logger.info('Pre-train finish')
+        """MODEL SAVE & LOAD"""
+        best_epoch = min(pretrain_loss_dic, key=(lambda x: pretrain_loss_dic[x]))
+        logger.info('best_epoch:{}'.format(best_epoch))
+        chainer.serializers.save_npz(model_dir + 'p_best_model.npz', model)
+        logger.info('Pre-train finish')
 
     """MAIN"""
     valid_num = 5
