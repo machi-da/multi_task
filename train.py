@@ -312,7 +312,6 @@ def main():
 
         elif model_type in ['label', 'pretrain']:
             param, total, s_total, s_result_total = gridsearcher.gridsearch(correct_label, correct_index, labels)
-            print(s_result_total)
             logger.info('E{} ## {}'.format(epoch, param))
             logger.info('E{} ## {}'.format(epoch, total))
             with open(model_dir + 'model_epoch_{}.label'.format(epoch), 'w')as f:

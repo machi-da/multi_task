@@ -151,18 +151,15 @@ class Evaluate:
                 for rr in r:
                     if rr[1]:
                         count_num += 1
-                # 正解した数: correct
-                correct = 0
-                for i in range(count_num):
-                    if r[i][1]:
-                        correct += 1
+
                 if count_num == 1 or count_num == 0:
                     score_dic[sent_num][1] += 1
-                    if correct:
+                    if r[0][1]:  # 一番スコアの高い文(rの0番目)が正解ラベル判定でTrueかどうか
                         score_dic[sent_num][0] += 1
                         result.append([cindex, 'T'])
                     else:
                         result.append([cindex, 'F'])
+
         else:
             for index, r in enumerate(rank_list, start=1):
                 sent_num = len(r)
@@ -171,14 +168,10 @@ class Evaluate:
                 for rr in r:
                     if rr[1]:
                         count_num += 1
-                # 正解した数: correct
-                correct = 0
-                for i in range(count_num):
-                    if r[i][1]:
-                        correct += 1
+
                 if count_num == 1 or count_num == 0:
                     score_dic[sent_num][1] += 1
-                    if correct:
+                    if r[0][1]:  # 一番スコアの高い文(rの0番目)が正解ラベル判定でTrueかどうか
                         score_dic[sent_num][0] += 1
 
         t_correct, t = sum([v[0] for k, v in score_dic.items()]), sum([v[1] for k, v in score_dic.items()])

@@ -61,27 +61,23 @@ def load_with_label_reg(file_name):
 def load_with_label_index(file_name):
     label_lit = []
     text = []
-    single_index = []
+    index = []
 
     with open(file_name, 'r')as f:
         data = f.readlines()
-    for d in data:
-        t = []
+    for i, d in enumerate(data, start=1):
         label, sentences = d.strip().split('\t')
+        label = [int(l) - 1 for l in label.split(',')]
         sentences = sentences.split('|||')
-        l_index = [int(l)-1 for l in label.split(',')]
-        label_lit.append(l_index)
 
+        label_lit.append(label)
+        t = []
         for sentence in sentences:
             t.append(sentence.split(' '))
         text.append(t)
+        index.append(i)
 
-    for i, d in enumerate(data, start=1):
-        label = d.split('\t')[0].split(',')
-        if len(label) == 1 and label[0] != '0':
-            single_index.append(i)
-
-    return label_lit, text, single_index
+    return label_lit, text, index
 
 
 def load_score_file(score_file):
