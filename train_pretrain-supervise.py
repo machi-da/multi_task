@@ -30,7 +30,7 @@ def parse_args():
     parser.add_argument('--vocab', '-v', choices=['normal', 'subword'], default='normal')
     parser.add_argument('--pretrain_w2v', '-p', action='store_true')
     parser.add_argument('--data_path', '-d', choices=['local', 'server'], default='server')
-    parser.add_argument('--load_model', '-l', type=str, default='')
+    parser.add_argument('--load_model', '-l', action='store_true')
     args = parser.parse_args()
     return args
 
@@ -107,7 +107,6 @@ def main():
 
     train_data_size = dataset.data_size(train_src_file)
     valid_data_size = dataset.data_size(valid_src_file)
-    logger.info('pre-train size: {}, pre-valid size: {}'.format(train_data_size, valid_data_size))
 
     src_initialW = None
     trg_initialW = None
@@ -157,28 +156,31 @@ def main():
 
     logger.info('src_vocab size: {}, trg_vocab size: {}'.format(src_vocab_size, trg_vocab_size))
 
-    train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, gpu_id, sort=True, shuffle=True)
-    # train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
-    valid_iter = dataset.Iterator(valid_src_file, valid_trg_file, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
-
-    """MODEL"""
-    model = model_supervise.Label(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, src_initialW, trg_initialW)
-
-    """OPTIMIZER"""
-    optimizer = chainer.optimizers.Adam()
-    optimizer.setup(model)
-    optimizer.add_hook(chainer.optimizer.GradientClipping(gradclip))
-    optimizer.add_hook(chainer.optimizer.WeightDecay(weight_decay))
-
-    """GPU"""
-    if gpu_id >= 0:
-        logger.info('Use GPU')
-        chainer.cuda.get_device_from_id(gpu_id).use()
-        model.to_gpu()
-
     """PRETRAIN"""
-    if load_model == '':
+    if not load_model:
         logger.info('Pre-train start')
+        logger.info('pre-train size: {}, pre-valid size: {}'.format(train_data_size, valid_data_size))
+
+        train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, gpu_id, sort=True, shuffle=True)
+        # train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
+        valid_iter = dataset.Iterator(valid_src_file, valid_trg_file, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
+
+        """MODEL"""
+        model = model_supervise.Label(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, src_initialW, trg_initialW)
+
+        """OPTIMIZER"""
+        optimizer = chainer.optimizers.Adam()
+        optimizer.setup(model)
+        optimizer.add_hook(chainer.optimizer.GradientClipping(gradclip))
+        optimizer.add_hook(chainer.optimizer.WeightDecay(weight_decay))
+
+        """GPU"""
+        if gpu_id >= 0:
+            logger.info('Use GPU')
+            chainer.cuda.get_device_from_id(gpu_id).use()
+            model.to_gpu()
+
+        """PRETRAIN"""
         pretrain_loss_dic = {}
         for epoch in range(1, pretrain_epoch + 1):
             train_loss = 0
