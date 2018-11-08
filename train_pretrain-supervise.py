@@ -74,6 +74,7 @@ def main():
     weight_decay = float(config['Parameter']['weight_decay'])
     gradclip = float(config['Parameter']['gradclip'])
     vocab_size = int(config['Parameter']['vocab_size'])
+    valid_num = int(config['Parameter']['valid_num'])
     """LOGGER"""
     logger = getLogger(__name__)
     logger.setLevel(logging.INFO)
@@ -216,7 +217,6 @@ def main():
         logger.info('Pre-train finish')
 
     """MAIN"""
-    valid_num = 5
     label_data, src_data = dataset.load_with_label_binary(test_src_file)
     trg_data = dataset.load(test_trg_file)
     correct_label_data, _, correct_index_data = dataset.load_with_label_index(test_src_file)
@@ -342,6 +342,7 @@ def main():
 
             init, mix = evaluate.key_to_param(k)
             s_rate, s_count, m_rate, m_count, s_result = evaluater.eval_param(labels, alignments, c_test, ci_test, init, mix)
+            s_result_dic[epoch] = s_result
             logger.info('V{} ## E{} ## {}'.format(ite, epoch, ' '.join(s_rate)))
             # logger.info('V{} ## E{} ## {}'.format(ite, epoch, ' '.join(s_count)))
 

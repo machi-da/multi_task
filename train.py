@@ -81,6 +81,7 @@ def main():
     gradclip = float(config['Parameter']['gradclip'])
     vocab_size = int(config['Parameter']['vocab_size'])
     coefficient = float(config['Parameter']['coefficient'])
+    valid_num = int(config['Parameter']['valid_num'])
     """LOGGER"""
     logger = getLogger(__name__)
     logger.setLevel(logging.INFO)
@@ -170,7 +171,7 @@ def main():
     valid_iter = dataset.Iterator(valid_src_file, valid_trg_file, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
     test_iter = dataset.Iterator(test_src_file, test_src_file, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
 
-    gridsearcher = gridsearch.GridSearch(valid_num=2)
+    gridsearcher = gridsearch.GridSearch(valid_num=valid_num)
 
     """MODEL"""
     if model_type == 'multi':

@@ -79,6 +79,7 @@ def main():
     gradclip = float(config['Parameter']['gradclip'])
     vocab_size = int(config['Parameter']['vocab_size'])
     coefficient = float(config['Parameter']['coefficient'])
+    valid_num = int(config['Parameter']['valid_num'])
     """LOGGER"""
     logger = getLogger(__name__)
     logger.setLevel(logging.INFO)
@@ -113,7 +114,6 @@ def main():
     src_initialW = None
     trg_initialW = None
 
-    valid_num = 5
     label_data, src_data = dataset.load_with_label_binary(test_src_file)
     trg_data = dataset.load(test_trg_file)
     correct_label_data, _, correct_index_data = dataset.load_with_label_index(test_src_file)
