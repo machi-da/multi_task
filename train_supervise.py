@@ -293,7 +293,6 @@ def main():
                         f.write('V{} ## E{} ## [batch detail]'.format(ite, epoch))
                         for b in batch[0]:
                             [f.write(src_vocab.id2word(chainer.cuda.to_cpu(bb)) + '\n') for bb in b]
-            logger.info('V{} ## E{} ## train loss:{}'.format(ite, epoch, train_loss))
             chainer.serializers.save_npz(model_valid_dir + 'model_epoch_{}.npz'.format(epoch), model)
 
             """DEV"""
@@ -327,7 +326,7 @@ def main():
 
             k = max(best_param_dic, key=lambda x: best_param_dic[x])
             v = best_param_dic[k]
-            logger.info('V{} ## E{} ## dev tuning: {}, {}'.format(ite, epoch, k, v))
+            logger.info('V{} ## E{} ## train loss: {}, dev tuning: {}, {}'.format(ite, epoch, train_loss, k, v))
 
             """TEST"""
             outputs = []
@@ -354,7 +353,10 @@ def main():
                     alignments.append(chainer.cuda.to_cpu(a))
 
             init, mix = evaluate.key_to_param(k)
-            s_rate, s_count, m_rate, m_count, s_result = evaluater.eval_param(labels, alignments, c_test, ci_test, init, mix)
+            if model_type in ['multi', 'label', 'pretrain']:
+                s_rate, s_count, m_rate, m_count, s_result = evaluater.eval_param(labels, alignments, c_test, ci_test, init, mix)
+            else:
+                s_rate, s_count, m_rate, m_count, s_result = evaluater.eval_param(alignments, [], c_test, ci_test, init, mix)
             s_result_dic[epoch] = s_result
             logger.info('V{} ## E{} ## {}'.format(ite, epoch, ' '.join(s_rate)))
             # logger.info('V{} ## E{} ## {}'.format(ite, epoch, ' '.join(s_count)))

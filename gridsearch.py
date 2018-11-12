@@ -2,7 +2,6 @@ import argparse
 import re
 import evaluate
 from itertools import zip_longest
-from collections import Counter
 import numpy as np
 
 np.random.seed(1)
@@ -61,10 +60,6 @@ class GridSearch:
         total = ' '.join([str(round(t / len(correct), 3)) for t in total])
         self.result_detail.append('total: {}'.format(total))
 
-        c_param = Counter(param)
-        best_param = max(c_param, key=lambda x: c_param[x])
-        init, mix = evaluate.key_to_param(best_param)
-
         # パラメータ, スコア, スコアの平均, スコアの詳細
         return '|'.join(param), total, s_total, s_result_total
 
@@ -111,17 +106,16 @@ def shuffle_list(*args):
     return shuffled_list
 
 
-def main(label, align, correct_label, correct_index, align_only=False):
-    gs = GridSearch(valid_num=5)
+def main(label, align, correct_label, correct_index, valid_num, align_only=False, print_flag=True):
+    gs = GridSearch(valid_num=valid_num)
 
     if align_only:
-        param, total, s_total, init, mix = gs.gridsearch(correct_label, correct_index, align, [])
-        gs.print_detail()
-        print('{}'.format(total))
+        param, total, s_total, s_result = gs.gridsearch(correct_label, correct_index, align, [])
     else:
-        param, total, s_total, init, mix = gs.gridsearch(correct_label, correct_index, label, align)
+        param, total, s_total, s_result = gs.gridsearch(correct_label, correct_index, label, align)
+
+    if print_flag:
         gs.print_detail()
-        print('{}'.format(total))
 
     return s_total
 
@@ -129,6 +123,7 @@ def main(label, align, correct_label, correct_index, align_only=False):
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('model_name')
+    parser.add_argument('--valid_num', '-v', type=int, default=5)
     parser.add_argument('--align_only', '-a', action='store_true')
     args = parser.parse_args()
     return args
@@ -138,8 +133,9 @@ if __name__ == '__main__':
     args = parse_args()
     model_name = args.model_name
     model_dir = re.search(r'^(.*/)', model_name).group(1)
+    valid_num = args.valid_num
     align_only = args.align_only
 
     label, align, correct_label, correct_index = evaluate.load_score_file(model_name, model_dir)
 
-    main(label, align, correct_label, correct_index, align_only)
+    main(label, align, correct_label, correct_index, valid_num, align_only)
