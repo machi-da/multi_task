@@ -287,26 +287,31 @@ def key_to_param(key):
 
 
 def load_score_file(model_name, model_dir):
-    config_files = glob.glob(os.path.join(model_dir, '*.ini'))
-    config_file = config_files[0]
-    config = configparser.ConfigParser()
-    config.read(config_file)
+    label = []
+    align = []
+    correct_label = []
+    correct_index = []
 
-    data_path = 'local' if 'l' in model_dir.split('_') else 'server'
-    correct = config[data_path]['test_src_file']
-    correct_label, _, correct_index = dataset.load_with_label_index(correct)
-
-    if 'encdec' in model_dir.split('_'):
-        raw_data = config[data_path]['raw_score_file']
-        label = dataset.load_score_file(raw_data)
-    else:
-        label_file = model_name + '.label'
+    label_file = model_name + '.label'
+    if os.path.isfile(label_file):
         label = dataset.load_score_file(label_file)
 
-    align = []
     align_file = model_name + '.align'
     if os.path.isfile(align_file):
         align = dataset.load_score_file(align_file)
+
+    config = configparser.ConfigParser()
+    config_files = glob.glob(os.path.join(model_dir, '*.ini'))
+    if len(config_files):
+        config_file = config_files[0]
+        config.read(config_file)
+        data_path = 'local' if 'l' in model_dir.strip('/').split('_') else 'server'
+        correct = config[data_path]['test_src_file']
+        correct_label, _, correct_index = dataset.load_with_label_index(correct)
+
+        if 'encdec' in model_dir.split('_'):
+            raw_data = config[data_path]['raw_score_file']
+            label = dataset.load_score_file(raw_data)
 
     return label, align, correct_label, correct_index
 
