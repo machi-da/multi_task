@@ -117,7 +117,7 @@ def main(label, align, correct_label, correct_index, valid_num, align_only=False
     if print_flag:
         gs.print_detail()
 
-    return s_total
+    return s_total, s_result
 
 
 def parse_args():

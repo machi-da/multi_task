@@ -29,8 +29,10 @@ def merge(output_dir, model_dir1, model_dir2, correct_label, correct_index, vali
             model = 'label{}_encdec{}'.format(i, j)
 
             try:
-                s_total = gridsearch.main(label, align, correct_label, correct_index, valid_num, align_only=False, print_flag=False)
+                s_total, s_result = gridsearch.main(label, align, correct_label, correct_index, valid_num, align_only=False, print_flag=False)
                 result_dic[model] = s_total
+                with open(output_dir + model + '.s_res.csv', 'w')as f:
+                    [f.write('{}\t{}\n'.format(l[0], l[1])) for l in sorted(s_result, key=lambda x: x[0])]
             except KeyError:
                 result_dic[model] = 0
             except ValueError:
@@ -56,7 +58,7 @@ def main():
     valid_file_num = len(glob.glob(os.path.join(model_dir1, 'valid*/')))
     if valid_file_num:
         _, _, correct_label, correct_index = evaluate.load_score_file('', model_dir1)
-        slice_size = len(correct_label) // valid_num
+        slice_size = len(correct_label) // 5
         correct_label, correct_index = gridsearch.shuffle_list(correct_label, correct_index)
         correct_label = gridsearch.slice_list(correct_label, slice_size)
         correct_index = gridsearch.slice_list(correct_index, slice_size)
