@@ -130,7 +130,7 @@ def main():
 
     cross_valid_result = []
     s_result_total = []
-    for ite in range(1, len(split_label) + 1):
+    for ite in range(1, valid_num + 1):
         # 5分割データ作成
         # que_lit = []
         # ans_lit = []
