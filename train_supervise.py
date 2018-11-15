@@ -262,7 +262,7 @@ def main():
                 logger.info('V{} ## P{} ## train loss: {}, val loss:{}'.format(ite, epoch, train_loss, valid_loss))
                 pretrain_loss_dic[epoch] = valid_loss
 
-            """MODEL SAVE & LOAD"""
+            """MODEL SAVE"""
             best_epoch = min(pretrain_loss_dic, key=(lambda x: pretrain_loss_dic[x]))
             logger.info('best_epoch:{}'.format(best_epoch))
             chainer.serializers.save_npz(model_valid_dir + 'p_best_model.npz', model)
@@ -361,22 +361,7 @@ def main():
             logger.info('V{} ## E{} ## {}'.format(ite, epoch, ' '.join(s_rate)))
             # logger.info('V{} ## E{} ## {}'.format(ite, epoch, ' '.join(s_count)))
 
-            if model_type == 'multi':
-                with open(model_valid_dir + 'model_epoch_{}.label'.format(epoch), 'w')as f:
-                    [f.write('{}\n'.format(l)) for l in labels]
-                with open(model_valid_dir + 'model_epoch_{}.hypo'.format(epoch), 'w')as f:
-                    [f.write(o + '\n') for o in outputs]
-                with open(model_valid_dir + 'model_epoch_{}.align'.format(epoch), 'w')as f:
-                    [f.write('{}\n'.format(a)) for a in alignments]
-            elif model_type in ['label', 'pretrain']:
-                with open(model_valid_dir + 'model_epoch_{}.label'.format(epoch), 'w')as f:
-                    [f.write('{}\n'.format(l)) for l in labels]
-            else:
-                with open(model_valid_dir + 'model_epoch_{}.hypo'.format(epoch), 'w')as f:
-                    [f.write(o + '\n') for o in outputs]
-                with open(model_valid_dir + 'model_epoch_{}.align'.format(epoch), 'w')as f:
-                    [f.write('{}\n'.format(a)) for a in alignments]
-
+            dataset.save_output(model_valid_dir, epoch, labels, alignments, outputs)
             accuracy_dic[epoch] = [float(v), s_rate]
 
         """MODEL SAVE"""
@@ -385,24 +370,16 @@ def main():
         cross_valid_result.append([ite, best_epoch, accuracy_dic[best_epoch][1]])
         logger.info('V{} ## best_epoch:{} {}'.format(ite, best_epoch, model_valid_dir))
         chainer.serializers.save_npz(model_valid_dir + 'best_model.npz', model)
-        if model_type == 'multi':
-            shutil.copy(model_valid_dir + 'model_epoch_{}.label'.format(epoch), model_valid_dir + 'best_model.label')
-            shutil.copy(model_valid_dir + 'model_epoch_{}.hypo'.format(epoch), model_valid_dir + 'best_model.hypo')
-            shutil.copy(model_valid_dir + 'model_epoch_{}.align'.format(epoch), model_valid_dir + 'best_model.aligh')
-        elif model_type in ['label', 'pretrain']:
-            shutil.copy(model_valid_dir + 'model_epoch_{}.label'.format(epoch), model_valid_dir + 'best_model.label')
-        else:
-            shutil.copy(model_valid_dir + 'model_epoch_{}.hypo'.format(epoch), model_valid_dir + 'best_model.hypo')
-            shutil.copy(model_valid_dir + 'model_epoch_{}.align'.format(epoch), model_valid_dir + 'best_model.aligh')
+        dataset.copy_best_output(model_valid_dir, best_epoch)
 
         logger.info('')
 
-    average_score = 0
+    average_score = [0, 0, 0, 0, 0, 0, 0]
     for r in cross_valid_result:
-        average_score += float(r[2][-1])
+        average_score = [average_score[i] + float(r[2][i]) for i in range(len(average_score))]
         logger.info('{}: epoch{}, {}'.format(r[0], r[1], ' '.join(r[2])))
-    average_score /= len(cross_valid_result)
-    logger.info('average score: {}'.format(average_score))
+    average_score = [str(average_score[i] / len(cross_valid_result)) for i in range(len(average_score))]
+    logger.info('average: {}'.format(' '.join(average_score)))
 
     with open(model_dir + 's_res.txt', 'w')as f:
         [f.write('{}\t{}\n'.format(l[0], l[1])) for l in sorted(s_result_total, key=lambda x: x[0])]

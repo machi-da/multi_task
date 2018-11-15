@@ -43,6 +43,7 @@ def merge(output_dir, model_dir1, model_dir2, correct_label, correct_index, vali
         best_comb = max(result_dic, key=(lambda x: result_dic[x]))
         f.write('[Best comb]\n')
         f.write('{}\t{}\n'.format(best_comb, result_dic[best_comb]))
+    return result_dic[best_comb]
 
 
 def main():

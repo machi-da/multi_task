@@ -8,6 +8,7 @@ import numpy as np
 import sentencepiece as spm
 from collections import Counter
 import random
+import shutil
 
 import convert
 
@@ -106,6 +107,36 @@ def load_pickle(file_name):
 def save_pickle(file_name, data):
     with open(file_name, 'wb') as f:
         pickle.dump(data, f)
+    return
+
+
+def save_output(save_dir, epoch, label_data, align_data, hypo_data):
+    if label_data:
+        with open(save_dir + 'model_epoch_{}.label'.format(epoch), 'w')as f:
+            [f.write('{}\n'.format(l)) for l in label_data]
+    if align_data:
+        with open(save_dir + 'model_epoch_{}.hypo'.format(epoch), 'w')as f:
+            [f.write(h + '\n') for h in hypo_data]
+    if hypo_data:
+        with open(save_dir + 'model_epoch_{}.align'.format(epoch), 'w')as f:
+            [f.write('{}\n'.format(a)) for a in align_data]
+    return
+
+
+def copy_best_output(save_dir, best_epoch):
+    try:
+        shutil.copy(save_dir + 'model_epoch_{}.label'.format(best_epoch), save_dir + 'best_model.label')
+    except FileNotFoundError:
+        pass
+    try:
+        shutil.copy(save_dir + 'model_epoch_{}.hypo'.format(best_epoch), save_dir + 'best_model.hypo')
+    except FileNotFoundError:
+        pass
+    try:
+        shutil.copy(save_dir + 'model_epoch_{}.align'.format(best_epoch), save_dir + 'best_model.aligh')
+    except FileNotFoundError:
+        pass
+    return
 
 
 class VocabNormal:

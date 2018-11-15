@@ -1,6 +1,7 @@
 import argparse
 import configparser
 import os
+import re
 import shutil
 import logging
 from logging import getLogger
@@ -27,6 +28,7 @@ def parse_args():
     parser.add_argument('--pretrain_epoch', '-pe', type=int, default=10)
     parser.add_argument('--interval', '-i', type=int, default=100000)
     parser.add_argument('--gpu', '-g', type=int, default=-1)
+    parser.add_argument('--model', '-m', choices=['multi', 'label', 'encdec', 'pretrain'], default='multi')
     parser.add_argument('--vocab', '-v', choices=['normal', 'subword'], default='normal')
     parser.add_argument('--pretrain_w2v', '-p', action='store_true')
     parser.add_argument('--data_path', '-d', choices=['local', 'server'], default='server')
@@ -45,6 +47,7 @@ def main():
     pretrain_epoch = args.pretrain_epoch
     interval = args.interval
     gpu_id = args.gpu
+    model_type = args.model
     vocab_type = args.vocab
     pretrain_w2v = args.pretrain_w2v
     data_path = args.data_path
@@ -53,16 +56,22 @@ def main():
     """DIR PREPARE"""
     config.read(config_file)
     vocab_size = int(config['Parameter']['vocab_size'])
+    coefficient = float(config['Parameter']['coefficient'])
+    base_dir = config[data_path]['base_dir']
+    dir_path_last = re.search(r'.*/(.*?)$', base_dir).group(1)
 
     vocab_name = vocab_type
     if pretrain_w2v:
         vocab_name = 'p' + vocab_name
 
-    model_dir = './pretrain-super_{}{}_{}/'.format(vocab_name, vocab_size, data_path[0])
+    if model_type == 'multi':
+        model_dir = './pre_super_{}_{}{}_{}_c{}_{}'.format(model_type, vocab_name, vocab_size, data_path[0], coefficient, dir_path_last)
+    else:
+        model_dir = './pre_super_{}_{}{}_{}_{}'.format(model_type, vocab_name, vocab_size, data_path[0], dir_path_last)
 
     if not os.path.exists(model_dir):
         os.mkdir(model_dir)
-    shutil.copyfile(config_file, model_dir + config_file)
+        shutil.copyfile(config_file, model_dir + config_file)
     config_file = model_dir + config_file
     config.read(config_file)
 
@@ -157,6 +166,25 @@ def main():
 
     logger.info('src_vocab size: {}, trg_vocab size: {}'.format(src_vocab_size, trg_vocab_size))
 
+    """MODEL"""
+    if model_type == 'multi':
+        model = model_supervise.Multi(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, coefficient, src_initialW, trg_initialW)
+    elif model_type in ['label', 'pretrain']:
+        model = model_supervise.Label(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, src_initialW, trg_initialW)
+    else:
+        model = model_supervise.EncoderDecoder(src_vocab_size, trg_vocab_size, embed_size, hidden_size, dropout_ratio, src_initialW, trg_initialW)
+    """OPTIMIZER"""
+    optimizer = chainer.optimizers.Adam()
+    optimizer.setup(model)
+    optimizer.add_hook(chainer.optimizer.GradientClipping(gradclip))
+    optimizer.add_hook(chainer.optimizer.WeightDecay(weight_decay))
+
+    """GPU"""
+    if gpu_id >= 0:
+        logger.info('Use GPU')
+        chainer.cuda.get_device_from_id(gpu_id).use()
+        model.to_gpu()
+
     """PRETRAIN"""
     if not load_model:
         logger.info('Pre-train start')
@@ -166,22 +194,6 @@ def main():
         # train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
         valid_iter = dataset.Iterator(valid_src_file, valid_trg_file, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
 
-        """MODEL"""
-        model = model_supervise.Label(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, src_initialW, trg_initialW)
-
-        """OPTIMIZER"""
-        optimizer = chainer.optimizers.Adam()
-        optimizer.setup(model)
-        optimizer.add_hook(chainer.optimizer.GradientClipping(gradclip))
-        optimizer.add_hook(chainer.optimizer.WeightDecay(weight_decay))
-
-        """GPU"""
-        if gpu_id >= 0:
-            logger.info('Use GPU')
-            chainer.cuda.get_device_from_id(gpu_id).use()
-            model.to_gpu()
-
-        """PRETRAIN"""
         pretrain_loss_dic = {}
         for epoch in range(1, pretrain_epoch + 1):
             train_loss = 0
@@ -231,6 +243,8 @@ def main():
     split_correct_label = gridsearch.slice_list(correct_label_data, slice_size)
     split_correct_index = gridsearch.slice_list(correct_index_data, slice_size)
 
+    evaluater = evaluate.Evaluate()
+
     cross_valid_result = []
     s_result_total = []
     for ite in range(1, valid_num + 1):
@@ -251,8 +265,6 @@ def main():
         # train_iter = dataset.SuperviseIterator(s_train, l_train, t_train, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
         dev_iter = dataset.SuperviseIterator(s_dev, l_dev, t_dev, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
         test_iter = dataset.SuperviseIterator(s_test, l_test, t_test, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
-
-        evaluater = evaluate.Evaluate()
 
         """MODEL"""
         model = model_supervise.Label(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, src_initialW, trg_initialW)
@@ -293,7 +305,6 @@ def main():
                         f.write('V{} ## E{} ## [batch detail]'.format(ite, epoch))
                         for b in batch[0]:
                             [f.write(src_vocab.id2word(chainer.cuda.to_cpu(bb)) + '\n') for bb in b]
-            logger.info('V{} ## E{} ## train loss:{}'.format(ite, epoch, train_loss))
             chainer.serializers.save_npz(model_valid_dir + 'model_epoch_{}.npz'.format(epoch), model)
 
             """DEV"""
@@ -319,15 +330,16 @@ def main():
 
             k = max(best_param_dic, key=lambda x: best_param_dic[x])
             v = best_param_dic[k]
-            logger.info('V{} ## E{} ## dev tuning: {}, {}'.format(ite, epoch, k, v))
+            logger.info('V{} ## E{} ## train loss: {}, dev tuning: {}, {}'.format(ite, epoch, train_loss, k, v))
 
             """TEST"""
+            outputs = []
             labels = []
             alignments = []
             for i, batch in enumerate(test_iter.generate(), start=1):
                 try:
                     with chainer.no_backprop_mode(), chainer.using_config('train', False):
-                        _, label, _ = model.predict(batch[0], sos, eos)
+                        output, label, align = model.predict(batch[0], sos, eos)
                 except Exception as e:
                     logger.info('V{} ## E{} ## test iter: {}, {}'.format(ite, epoch, i, e))
                     with open(model_dir + 'error_log.txt', 'a')as f:
@@ -337,18 +349,23 @@ def main():
                         for b in batch[0]:
                             [f.write(src_vocab.id2word(chainer.cuda.to_cpu(bb)) + '\n') for bb in b]
 
+                for o in output:
+                    outputs.append(trg_vocab.id2word(chainer.cuda.to_cpu(o)))
                 for l in label:
                     labels.append(chainer.cuda.to_cpu(l))
+                for a in align:
+                    alignments.append(chainer.cuda.to_cpu(a))
 
             init, mix = evaluate.key_to_param(k)
-            s_rate, s_count, m_rate, m_count, s_result = evaluater.eval_param(labels, alignments, c_test, ci_test, init, mix)
+            if model_type in ['multi', 'label', 'pretrain']:
+                s_rate, s_count, m_rate, m_count, s_result = evaluater.eval_param(labels, alignments, c_test, ci_test, init, mix)
+            else:
+                s_rate, s_count, m_rate, m_count, s_result = evaluater.eval_param(alignments, [], c_test, ci_test, init, mix)
             s_result_dic[epoch] = s_result
             logger.info('V{} ## E{} ## {}'.format(ite, epoch, ' '.join(s_rate)))
             # logger.info('V{} ## E{} ## {}'.format(ite, epoch, ' '.join(s_count)))
 
-            with open(model_valid_dir + 'model_epoch_{}.label'.format(epoch), 'w')as f:
-                [f.write('{}\n'.format(l)) for l in labels]
-
+            dataset.save_output(model_valid_dir, epoch, labels, alignments, outputs)
             accuracy_dic[epoch] = [float(v), s_rate]
 
         """MODEL SAVE"""
@@ -357,16 +374,16 @@ def main():
         cross_valid_result.append([ite, best_epoch, accuracy_dic[best_epoch][1]])
         logger.info('V{} ## best_epoch:{} {}'.format(ite, best_epoch, model_valid_dir))
         chainer.serializers.save_npz(model_valid_dir + 'best_model.npz', model)
-        shutil.copy(model_valid_dir + 'model_epoch_{}.label'.format(epoch), model_valid_dir + 'best_model.label')
+        dataset.copy_best_output(model_valid_dir, best_epoch)
 
         logger.info('')
 
-    average_score = 0
+    average_score = [0, 0, 0, 0, 0, 0, 0]
     for r in cross_valid_result:
-        average_score += float(r[2][-1])
+        average_score = [average_score[i] + float(r[2][i]) for i in range(len(average_score))]
         logger.info('{}: epoch{}, {}'.format(r[0], r[1], ' '.join(r[2])))
-    average_score /= len(cross_valid_result)
-    logger.info('average score: {}'.format(average_score))
+    average_score = [str(average_score[i] / len(cross_valid_result)) for i in range(len(average_score))]
+    logger.info('average: {}'.format(' '.join(average_score)))
 
     with open(model_dir + 's_res.txt', 'w')as f:
         [f.write('{}\t{}\n'.format(l[0], l[1])) for l in sorted(s_result_total, key=lambda x: x[0])]

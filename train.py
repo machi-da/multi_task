@@ -68,7 +68,7 @@ def main():
 
     if not os.path.exists(model_dir):
         os.mkdir(model_dir)
-    shutil.copyfile(config_file, model_dir + config_file)
+        shutil.copyfile(config_file, model_dir + config_file)
     config_file = model_dir + config_file
     config.read(config_file)
 
@@ -145,9 +145,7 @@ def main():
             w2v = word2vec.Word2Vec()
             src_initialW, vector_size, src_match_word_count = w2v.make_initialW(src_vocab.vocab, src_w2v_file)
             trg_initialW, vector_size, trg_match_word_count = w2v.make_initialW(trg_vocab.vocab, trg_w2v_file)
-            embed_size = vector_size
-            hidden_size = vector_size
-            logger.info('Initialize w2v embedding. Match: src {}/{}, trg {}/{}'.format(src_match_word_count, src_vocab_size, trg_match_word_count, trg_vocab_size))
+            logger.info('Initialize w2v embedding. Match: src {}/{}, trg {}/{}'.format(src_match_word_count, len(src_vocab.vocab), trg_match_word_count, len(trg_vocab.vocab)))
 
     elif vocab_type == 'subword':
         src_vocab = dataset.VocabSubword()
@@ -161,10 +159,8 @@ def main():
 
         sos = convert.convert_list(np.array([src_vocab.vocab.PieceToId('<s>')], dtype=np.int32), gpu_id)
         eos = convert.convert_list(np.array([src_vocab.vocab.PieceToId('</s>')], dtype=np.int32), gpu_id)
-        src_vocab_size = len(src_vocab.vocab)
-        trg_vocab_size = len(trg_vocab.vocab)
 
-    logger.info('src_vocab size: {}, trg_vocab size: {}'.format(src_vocab_size, trg_vocab_size))
+    logger.info('src_vocab size: {}, trg_vocab size: {}'.format(len(src_vocab.vocab), len(trg_vocab.vocab)))
 
     train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, gpu_id, sort=True, shuffle=True)
     # train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
@@ -300,34 +296,16 @@ def main():
             for a in align:
                 alignments.append(chainer.cuda.to_cpu(a))
 
-        if model_type == 'multi':
+        if model_type in ['multi','label', 'pretrain']:
             param, total, s_total, s_result_total = gridsearcher.gridsearch(correct_label, correct_index, labels, alignments)
-            logger.info('E{} ## {}'.format(epoch, param))
-            logger.info('E{} ## {}'.format(epoch, total))
-            with open(model_dir + 'model_epoch_{}.label'.format(epoch), 'w')as f:
-                [f.write('{}\n'.format(l)) for l in labels]
-            with open(model_dir + 'model_epoch_{}.hypo'.format(epoch), 'w')as f:
-                [f.write(o + '\n') for o in outputs]
-            with open(model_dir + 'model_epoch_{}.align'.format(epoch), 'w')as f:
-                [f.write('{}\n'.format(a)) for a in alignments]
-
-        elif model_type in ['label', 'pretrain']:
-            param, total, s_total, s_result_total = gridsearcher.gridsearch(correct_label, correct_index, labels)
-            logger.info('E{} ## {}'.format(epoch, param))
-            logger.info('E{} ## {}'.format(epoch, total))
-            with open(model_dir + 'model_epoch_{}.label'.format(epoch), 'w')as f:
-                [f.write('{}\n'.format(l)) for l in labels]
-
         else:
             param, total, s_total, s_result_total = gridsearcher.gridsearch(correct_label, correct_index, raw_score, alignments)
-            logger.info('E{} ## {}'.format(epoch, param))
-            logger.info('E{} ## {}'.format(epoch, total))
-            with open(model_dir + 'model_epoch_{}.hypo'.format(epoch), 'w')as f:
-                [f.write(o + '\n') for o in outputs]
-            with open(model_dir + 'model_epoch_{}.align'.format(epoch), 'w')as f:
-                [f.write('{}\n'.format(a)) for a in alignments]
+        logger.info('E{} ## {}'.format(epoch, param))
+        logger.info('E{} ## {}'.format(epoch, total))
 
+        dataset.save_output(model_dir, epoch, labels, alignments, outputs)
         accuracy_dic[epoch] = s_total
+
         with open(model_dir + 'model_epoch_{}.s_res.txt'.format(epoch), 'w')as f:
             [f.write('{}\t{}\n'.format(l[0], l[1])) for l in sorted(s_result_total, key=lambda x: x[0])]
 

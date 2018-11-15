@@ -1,12 +1,18 @@
 import argparse
+import math
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
     # parser.add_argument('baseline_score_file')
     parser.add_argument('compared_score_file')
+    parser.add_argument('--convert', '-c', action='store_true')
     args = parser.parse_args()
     return args
+
+
+def comb(n, r):
+    return math.factorial(n) // (math.factorial(n - r) * math.factorial(r))
 
 
 def main(baseline_score_file, compared_score_file):
@@ -16,13 +22,19 @@ def main(baseline_score_file, compared_score_file):
         compared = f.readlines()
 
     correct_symbol = 'T'
+    binomial_prob = 0.5
 
     counter = 0
     better = 0
-    dic = {'TT': 0, 'TF': 0, 'FT': 0, 'FF': 0}
+    dic = {'baseline': 0, 'compared': 0, 'TT': 0, 'TF': 0, 'FT': 0, 'FF': 0}
     for b, c in zip(baseline, compared):
         b = b.strip().split('\t')[1]
         c = c.strip().split('\t')[1]
+
+        if b == correct_symbol:
+            dic['baseline'] += 1
+        if c == correct_symbol:
+            dic['compared'] += 1
 
         if b == correct_symbol:
             if c == correct_symbol:
@@ -41,7 +53,9 @@ def main(baseline_score_file, compared_score_file):
                 better += 1
 
     print(dic)
-    print('=BINOMDIST({}, {}, 0.5, FALSE)'.format(better, counter))
+    result_prob = comb(counter, better) * pow(binomial_prob, counter)
+    result_95 = True if result_prob <= 0.05 else False
+    print('prob: {}, 95%信頼区間: {}'.format(result_prob, result_95))
 
 
 def make_ishigaki_score():
@@ -78,8 +92,11 @@ if __name__ == '__main__':
     # baseline_score_file = args.baseline_score_file
     baseline_score_file = '/home/lr/machida/yahoo/evaluate/s_res.csv'
     compared_score_file = args.compared_score_file
+    convert = args.convert
 
-    main(baseline_score_file, compared_score_file)
-    # convert_s_res(compared_score_file)
+    if convert:
+        convert_s_res(compared_score_file)
+    else:
+        main(baseline_score_file, compared_score_file)
 
     # make_ishigaki_score()

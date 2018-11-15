@@ -128,16 +128,14 @@ class Multi(chainer.Chain):
             self.wordDec = WordDecoder(trg_vocab_size, embed_size, hidden_size, dropout, trg_initialW)
             self.labelClassifier = LabelClassifier(class_size, hidden_size, dropout)
         self.lossfun = F.softmax_cross_entropy
-        if coefficient == -1:
-            self.w_word  = 1.0
-            self.w_label = 1.0
-        else:
+
+        self.w_word  = 1.0
+        self.w_label = 1.0
+        if coefficient != -1:
             self.w_word  = coefficient
             self.w_label = 1.0 - coefficient
 
     def __call__(self, sources, targets_sos, targets_eos, label_gold):
-        w_word  = self.w_word
-        w_label = self.w_label
         hs, cs, enc_ys = self.encode(sources)
         word_hs, word_cs, word_ys, alignment = self.wordDec(hs, cs, targets_sos, enc_ys)
 
@@ -150,7 +148,18 @@ class Multi(chainer.Chain):
         concat_word_ys = F.concat(word_ys, axis=0)
         concat_word_ys_gold = F.concat(targets_eos, axis=0)
         loss_word = self.lossfun(concat_word_ys, concat_word_ys_gold, ignore_label=0)
-        loss = w_word * loss_word + w_label * loss_label
+        loss = self.w_word * loss_word + self.w_label * loss_label
+
+        return loss
+
+    def pretrain(self, sources, targets_sos, targets_eos, label_gold):
+        hs, cs, enc_ys = self.encode(sources)
+        word_hy, word_cy, word_ys, alignment = self.wordDec(hs, cs, targets_sos, enc_ys)
+
+        targets_eos = F.pad_sequence(targets_eos, length=None, padding=0)
+        concat_word_ys = F.concat(word_ys, axis=0)
+        concat_word_ys_gold = F.concat(targets_eos, axis=0)
+        loss = self.lossfun(concat_word_ys, concat_word_ys_gold, ignore_label=0)
 
         return loss
 

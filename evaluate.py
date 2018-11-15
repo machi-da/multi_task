@@ -308,7 +308,7 @@ def load_score_file(model_name, model_dir):
         model_info = model_dir.strip('/').split('_')
         data_path = 'local' if 'l' in model_info else 'server'
         if 'super' in model_info:
-            correct = config[data_path]['single_src_file']
+            correct = config_file[data_path]['single_src_file']
         else:
             correct = config[data_path]['test_src_file']
         correct_label, _, correct_index = dataset.load_with_label_index(correct)
