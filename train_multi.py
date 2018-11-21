@@ -28,7 +28,7 @@ def parse_args():
     parser.add_argument('--model', '-m', choices=['multi', 'label', 'encdec', 'pretrain'], default='multi')
     parser.add_argument('--vocab', '-v', choices=['normal', 'subword'], default='normal')
     parser.add_argument('--pretrain_w2v', '-p', action='store_true')
-    parser.add_argument('--data_path', '-d', choices=['local', 'server'], default='server')
+    parser.add_argument('--data_path', '-d', choices=['local', 'server', 'test'], default='server')
     args = parser.parse_args()
     return args
 
@@ -60,9 +60,9 @@ def main():
         vocab_name = 'p' + vocab_name
 
     if model_type == 'multi':
-        model_dir = './pre_super_{}_{}{}_{}_c{}_{}/'.format(model_type, vocab_name, vocab_size, data_path[0], coefficient, dir_path_last)
+        model_dir = './mix_super_{}_{}{}_{}_c{}_{}/'.format(model_type, vocab_name, vocab_size, data_path[0], coefficient, dir_path_last)
     else:
-        model_dir = './pre_super_{}_{}{}_{}_{}/'.format(model_type, vocab_name, vocab_size, data_path[0], dir_path_last)
+        model_dir = './mix_super_{}_{}{}_{}_{}/'.format(model_type, vocab_name, vocab_size, data_path[0], dir_path_last)
 
     if not os.path.exists(model_dir):
         os.mkdir(model_dir)

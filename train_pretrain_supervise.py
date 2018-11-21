@@ -28,7 +28,7 @@ def parse_args():
     parser.add_argument('--model', '-m', choices=['multi', 'label', 'encdec', 'pretrain'], default='multi')
     parser.add_argument('--vocab', '-v', choices=['normal', 'subword'], default='normal')
     parser.add_argument('--pretrain_w2v', '-p', action='store_true')
-    parser.add_argument('--data_path', '-d', choices=['local', 'server', 'test'], default='server')
+    parser.add_argument('--data_path', '-d', choices=['local', 'server'], default='server')
     parser.add_argument('--load_model', '-l', action='store_true')
     args = parser.parse_args()
     return args
@@ -95,8 +95,6 @@ def main():
     valid_trg_file = config[data_path]['valid_trg_file']
     test_src_file = config[data_path]['single_src_file']
     test_trg_file = config[data_path]['single_trg_file']
-    # raw_score_file = config[data_path]['raw_score_single_file']
-    # raw_score_data = dataset.load_score_file(raw_score_file)
     src_w2v_file = config[data_path]['src_w2v_file']
     trg_w2v_file = config[data_path]['trg_w2v_file']
 
