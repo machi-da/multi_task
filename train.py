@@ -3,12 +3,9 @@ import configparser
 import os
 import re
 import shutil
-import logging
-from logging import getLogger
 import numpy as np
 import traceback
 
-import convert
 import dataset
 import gridsearch
 import model_reg
@@ -83,20 +80,8 @@ def main():
     coefficient = float(config['Parameter']['coefficient'])
     valid_num = int(config['Parameter']['valid_num'])
     """LOGGER"""
-    logger = getLogger(__name__)
-    logger.setLevel(logging.INFO)
-    formatter = logging.Formatter('[%(asctime)s] %(message)s')
-
-    sh = logging.StreamHandler()
-    sh.setLevel(logging.INFO)
-    sh.setFormatter(formatter)
-    logger.addHandler(sh)
-
     log_file = model_dir + 'log.txt'
-    fh = logging.FileHandler(log_file)
-    fh.setLevel(logging.INFO)
-    fh.setFormatter(formatter)
-    logger.addHandler(fh)
+    logger = dataset.prepare_logger(log_file)
 
     logger.info(args)  # 引数を記録
     logger.info('[Training start] logging to {}'.format(log_file))
@@ -118,54 +103,35 @@ def main():
     valid_data_size = dataset.data_size(valid_src_file)
     logger.info('train size: {}, valid size: {}'.format(train_data_size, valid_data_size))
 
+    """VOCABULARY"""
+    src_vocab, trg_vocab, sos, eos = dataset.prepare_vocab(model_dir, vocab_type, train_src_file, train_trg_file, vocab_size, gpu_id)
+    src_vocab_size = len(src_vocab.vocab)
+    trg_vocab_size = len(trg_vocab.vocab)
+
     src_initialW = None
     trg_initialW = None
 
-    if vocab_type == 'normal':
-        src_vocab = dataset.VocabNormal()
-        trg_vocab = dataset.VocabNormal()
-        if os.path.isfile(model_dir + 'src_vocab.normal.pkl') and os.path.isfile(model_dir + 'trg_vocab.normal.pkl'):
-            src_vocab.load(model_dir + 'src_vocab.normal.pkl')
-            trg_vocab.load(model_dir + 'trg_vocab.normal.pkl')
-        else:
-            init_vocab = {'<pad>': 0, '<unk>': 1, '<s>': 2, '</s>': 3}
-            src_vocab.build(train_src_file, True,  init_vocab, vocab_size)
-            trg_vocab.build(train_trg_file, False, init_vocab, vocab_size)
-            dataset.save_pickle(model_dir + 'src_vocab.normal.pkl', src_vocab.vocab)
-            dataset.save_pickle(model_dir + 'trg_vocab.normal.pkl', trg_vocab.vocab)
-        src_vocab.set_reverse_vocab()
-        trg_vocab.set_reverse_vocab()
+    if pretrain_w2v:
+        w2v = word2vec.Word2Vec()
+        src_initialW, vector_size, src_match_word_count = w2v.make_initialW(src_vocab.vocab, src_w2v_file)
+        trg_initialW, vector_size, trg_match_word_count = w2v.make_initialW(trg_vocab.vocab, trg_w2v_file)
+        logger.info('Initialize w2v embedding. Match: src {}/{}, trg {}/{}'.format(src_match_word_count, src_vocab_size, trg_match_word_count, trg_vocab_size))
 
-        sos = convert.convert_list(np.array([src_vocab.vocab['<s>']], dtype=np.int32), gpu_id)
-        eos = convert.convert_list(np.array([src_vocab.vocab['</s>']], dtype=np.int32), gpu_id)
-        src_vocab_size = len(src_vocab.vocab)
-        trg_vocab_size = len(trg_vocab.vocab)
+    logger.info('src_vocab size: {}, trg_vocab size: {}'.format(src_vocab_size, trg_vocab_size))
 
-        if pretrain_w2v:
-            w2v = word2vec.Word2Vec()
-            src_initialW, vector_size, src_match_word_count = w2v.make_initialW(src_vocab.vocab, src_w2v_file)
-            trg_initialW, vector_size, trg_match_word_count = w2v.make_initialW(trg_vocab.vocab, trg_w2v_file)
-            logger.info('Initialize w2v embedding. Match: src {}/{}, trg {}/{}'.format(src_match_word_count, len(src_vocab.vocab), trg_match_word_count, len(trg_vocab.vocab)))
-
-    elif vocab_type == 'subword':
-        src_vocab = dataset.VocabSubword()
-        trg_vocab = dataset.VocabSubword()
-        if os.path.isfile(model_dir + 'src_vocab.sub.model') and os.path.isfile(model_dir + 'trg_vocab.sub.model'):
-            src_vocab.load(model_dir + 'src_vocab.sub.model')
-            trg_vocab.load(model_dir + 'trg_vocab.sub.model')
-        else:
-            src_vocab.build(train_src_file + '.sub', model_dir + 'src_vocab.sub', vocab_size)
-            trg_vocab.build(train_trg_file + '.sub', model_dir + 'trg_vocab.sub', vocab_size)
-
-        sos = convert.convert_list(np.array([src_vocab.vocab.PieceToId('<s>')], dtype=np.int32), gpu_id)
-        eos = convert.convert_list(np.array([src_vocab.vocab.PieceToId('</s>')], dtype=np.int32), gpu_id)
-
-    logger.info('src_vocab size: {}, trg_vocab size: {}'.format(len(src_vocab.vocab), len(trg_vocab.vocab)))
-
-    train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, gpu_id, sort=True, shuffle=True)
+    """ITERATOR"""
+    src_label, src_text = dataset.load_with_label_reg(train_src_file)
+    trg_text = dataset.load(train_trg_file)
+    train_iter = dataset.Iterator(src_text, src_label, trg_text, src_vocab, trg_vocab, batch_size, gpu_id, sort=True, shuffle=True)
     # train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
-    valid_iter = dataset.Iterator(valid_src_file, valid_trg_file, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
-    test_iter = dataset.Iterator(test_src_file, test_src_file, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
+
+    src_label, src_text = dataset.load_with_label_reg(valid_src_file)
+    trg_text = dataset.load(valid_trg_file)
+    valid_iter = dataset.Iterator(src_text, src_label, trg_text, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
+
+    src_label, src_text = dataset.load_with_label_reg(test_src_file)
+    trg_text = dataset.load(test_src_file)
+    test_iter = dataset.Iterator(src_text, src_label, trg_text, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
 
     gridsearcher = gridsearch.GridSearch(valid_num=valid_num)
 
@@ -176,6 +142,7 @@ def main():
         model = model_reg.Label(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, src_initialW, trg_initialW)
     else:
         model = model_reg.EncoderDecoder(src_vocab_size, trg_vocab_size, embed_size, hidden_size, dropout_ratio, src_initialW, trg_initialW)
+
     """OPTIMIZER"""
     optimizer = chainer.optimizers.Adam()
     optimizer.setup(model)
@@ -296,7 +263,7 @@ def main():
             for a in align:
                 alignments.append(chainer.cuda.to_cpu(a))
 
-        if model_type in ['multi','label', 'pretrain']:
+        if model_type in ['multi', 'label', 'pretrain']:
             param, total, s_total, s_result_total = gridsearcher.gridsearch(correct_label, correct_index, labels, alignments)
         else:
             param, total, s_total, s_result_total = gridsearcher.gridsearch(correct_label, correct_index, raw_score, alignments)

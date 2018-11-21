@@ -4,11 +4,13 @@ import configparser
 import glob
 import pickle
 import os
-import numpy as np
-import sentencepiece as spm
-from collections import Counter
 import random
 import shutil
+import numpy as np
+import sentencepiece as spm
+import logging
+from logging import getLogger
+from collections import Counter
 
 import convert
 
@@ -139,6 +141,58 @@ def copy_best_output(save_dir, best_epoch):
     return
 
 
+def prepare_vocab(model_dir, vocab_type, src_file, trg_file, vocab_size, gpu_id):
+    if vocab_type == 'normal':
+        src_vocab = VocabNormal()
+        trg_vocab = VocabNormal()
+        if os.path.isfile(model_dir + 'src_vocab.normal.pkl') and os.path.isfile(model_dir + 'trg_vocab.normal.pkl'):
+            src_vocab.load(model_dir + 'src_vocab.normal.pkl')
+            trg_vocab.load(model_dir + 'trg_vocab.normal.pkl')
+        else:
+            init_vocab = {'<pad>': 0, '<unk>': 1, '<s>': 2, '</s>': 3}
+            src_vocab.build(src_file, True,  init_vocab, vocab_size)
+            trg_vocab.build(trg_file, False, init_vocab, vocab_size)
+            save_pickle(model_dir + 'src_vocab.normal.pkl', src_vocab.vocab)
+            save_pickle(model_dir + 'trg_vocab.normal.pkl', trg_vocab.vocab)
+        src_vocab.set_reverse_vocab()
+        trg_vocab.set_reverse_vocab()
+
+        sos = convert.convert_list(np.array([src_vocab.vocab['<s>']], dtype=np.int32), gpu_id)
+        eos = convert.convert_list(np.array([src_vocab.vocab['</s>']], dtype=np.int32), gpu_id)
+
+    elif vocab_type == 'subword':
+        src_vocab = VocabSubword()
+        trg_vocab = VocabSubword()
+        if os.path.isfile(model_dir + 'src_vocab.sub.model') and os.path.isfile(model_dir + 'trg_vocab.sub.model'):
+            src_vocab.load(model_dir + 'src_vocab.sub.model')
+            trg_vocab.load(model_dir + 'trg_vocab.sub.model')
+        else:
+            src_vocab.build(src_file + '.sub', model_dir + 'src_vocab.sub', vocab_size)
+            trg_vocab.build(trg_file + '.sub', model_dir + 'trg_vocab.sub', vocab_size)
+
+        sos = convert.convert_list(np.array([src_vocab.vocab.PieceToId('<s>')], dtype=np.int32), gpu_id)
+        eos = convert.convert_list(np.array([src_vocab.vocab.PieceToId('</s>')], dtype=np.int32), gpu_id)
+
+    return src_vocab, trg_vocab, sos, eos
+
+
+def prepare_logger(log_file):
+    logger = getLogger(__name__)
+    logger.setLevel(logging.INFO)
+    formatter = logging.Formatter('[%(asctime)s] %(message)s')
+
+    sh = logging.StreamHandler()
+    sh.setLevel(logging.INFO)
+    sh.setFormatter(formatter)
+    logger.addHandler(sh)
+
+    fh = logging.FileHandler(log_file)
+    fh.setLevel(logging.INFO)
+    fh.setFormatter(formatter)
+    logger.addHandler(fh)
+    return logger
+
+
 class VocabNormal:
     def __init__(self):
         self.vocab = None
@@ -258,96 +312,15 @@ class VocabSubword:
 
 
 class Iterator:
-    def __init__(self, src_file, trg_file, src_vocab, trg_vocab, batch_size, gpu_id, sort=True, shuffle=True):
-        label, src = load_with_label_reg(src_file)
-        trg = load(trg_file)
-
-        self.src_vocab = src_vocab
-        self.trg_vocab = trg_vocab
-
-        self.sort = sort
-        self.shuffle = shuffle
-
-        self.batches = self._prepare_minibatch(src, trg, label, batch_size, gpu_id)
-
-    def _convert(self, src, trg, label):
-        src_id = [self.src_vocab.word2id(s) for s in src]
-        trg_sos = self.trg_vocab.word2id(trg, sos=True)
-        trg_eos = self.trg_vocab.word2id(trg, eos=True)
-        return src_id, trg_sos, trg_eos, label
-
-    """
-    def generate(self, batches_per_sort=10000):
-        gpu_id = self.gpu_id
-        src, trg, label = self.src, self.trg, self.label
-        batch_size = self.batch_size
-
-        data = []
-        for s, t, l in zip(src, trg, label):
-            data.append(self._convert(s, t, l))
-
-            if len(data) != batch_size * batches_per_sort:
-                continue
-
-            if self.sort:
-                data = sorted(data, key=lambda x: len(x[0]), reverse=True)
-            batches = [convert.convert(data[b * batch_size: (b + 1) * batch_size], gpu_id) for b in range(batches_per_sort)]
-
-            if self.shuffle:
-                random.shuffle(batches)
-
-            for batch in batches:
-                yield batch
-
-            data = []
-
-        if len(data) != 0:
-            if self.sort:
-                data = sorted(data, key=lambda x: len(x[0]), reverse=True)
-            batches = [convert.convert(data[b * batch_size: (b + 1) * batch_size], gpu_id) for b in range(int(len(data) / batch_size) + 1)]
-
-            if self.shuffle:
-                random.shuffle(batches)
-
-            for batch in batches:
-                # 補足: len(data) == batch_sizeのとき、batchesの最後に空listができてしまうための対策
-                # convertしてあるの関係で([], [], [], [])と返ってくるので、最初のリストが空かどうかで判定
-                if not batch[0]:
-                    continue
-                yield batch
-    """
-
-    def _prepare_minibatch(self, src, trg, label, batch_size, gpu_id):
-        data = []
-        for s, t, l in zip(src, trg, label):
-            data.append(self._convert(s, t, l))
-
-        if self.sort:
-            data = sorted(data, key=lambda x: len(x[0]), reverse=True)
-        batches = [convert.convert(data[b * batch_size: (b + 1) * batch_size], gpu_id) for b in range(len(data) // batch_size)]
-        if len(data) % batch_size != 0:
-            batches.append(convert.convert(data[-(len(data) % batch_size):], gpu_id))
-
-        return batches
-
-    def generate(self):
-        batches = self.batches
-        if self.shuffle:
-            batches = random.sample(self.batches, len(self.batches))
-
-        for batch in batches:
-            yield batch
-
-
-class SuperviseIterator:
     def __init__(self, src_text, src_label, trg_text, src_vocab, trg_vocab, batch_size, gpu_id, sort=True, shuffle=True):
         self.src_vocab = src_vocab
         self.trg_vocab = trg_vocab
+        self.size = len(src_text)
 
         self.sort = sort
         self.shuffle = shuffle
 
-        self.batches = self._prepare_minibatch(src_text, trg_text, src_label, batch_size, gpu_id)
+        self.batches = self._prepare_minibatch(src_text, src_label, trg_text, batch_size, gpu_id)
 
     def _convert(self, src, trg, label):
         src_id = [self.src_vocab.word2id(s) for s in src]
@@ -355,9 +328,9 @@ class SuperviseIterator:
         trg_eos = self.trg_vocab.word2id(trg, eos=True)
         return src_id, trg_sos, trg_eos, label
 
-    def _prepare_minibatch(self, src, trg, label, batch_size, gpu_id):
+    def _prepare_minibatch(self, src, label, trg, batch_size, gpu_id):
         data = []
-        for s, t, l in zip(src, trg, label):
+        for s, l, t in zip(src, label, trg):
             data.append(self._convert(s, t, l))
 
         if self.sort:
@@ -371,10 +344,32 @@ class SuperviseIterator:
     def generate(self):
         batches = self.batches
         if self.shuffle:
-            batches = random.sample(self.batches, len(self.batches))
+            batches = random.sample(batches, len(batches))
 
         for batch in batches:
             yield batch
+
+
+class MixIterator:
+    def __init__(self, iterator1, iterator2, shuffle=True):
+        # iterator1を大きいデータサイズのiteratorに指定する
+        weight = 1 / (iterator1.size // iterator2.size)
+
+        self.batches = []
+        for batch in iterator1.batches:
+            self.batches.append([batch, weight])
+        for batch in iterator2.batches:
+            self.batches.append([batch, 1.0])
+
+        self.shuffle = shuffle
+
+    def generate(self):
+        batches = self.batches
+        if self.shuffle:
+            batches = random.sample(batches, len(batches))
+
+        for batch in batches:
+            yield batch[0], batch[1]
 
 
 if __name__ == '__main__':

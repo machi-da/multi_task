@@ -2,12 +2,9 @@ import argparse
 import configparser
 import os
 import shutil
-import logging
-from logging import getLogger
 import numpy as np
 import traceback
 
-import convert
 import dataset
 import evaluate
 import gridsearch
@@ -81,20 +78,8 @@ def main():
     coefficient = float(config['Parameter']['coefficient'])
     valid_num = int(config['Parameter']['valid_num'])
     """LOGGER"""
-    logger = getLogger(__name__)
-    logger.setLevel(logging.INFO)
-    formatter = logging.Formatter('[%(asctime)s] %(message)s')
-
-    sh = logging.StreamHandler()
-    sh.setLevel(logging.INFO)
-    sh.setFormatter(formatter)
-    logger.addHandler(sh)
-
     log_file = model_dir + 'log.txt'
-    fh = logging.FileHandler(log_file)
-    fh.setLevel(logging.INFO)
-    fh.setFormatter(formatter)
-    logger.addHandler(fh)
+    logger = dataset.prepare_logger(log_file)
 
     logger.info(args)  # 引数を記録
     logger.info('[Training start] logging to {}'.format(log_file))
@@ -110,9 +95,6 @@ def main():
     # raw_score_data = dataset.load_score_file(raw_score_file)
     src_w2v_file = config[data_path]['src_w2v_file']
     trg_w2v_file = config[data_path]['trg_w2v_file']
-
-    src_initialW = None
-    trg_initialW = None
 
     label_data, src_data = dataset.load_with_label_binary(test_src_file)
     trg_data = dataset.load(test_trg_file)
@@ -159,52 +141,27 @@ def main():
         c_train, c_dev, c_test = gridsearch.split_train_dev_test(split_correct_label, ite - 1)
         ci_train, ci_dev, ci_test = gridsearch.split_train_dev_test(split_correct_index, ite - 1)
 
-        if vocab_type == 'normal':
-            src_vocab = dataset.VocabNormal()
-            trg_vocab = dataset.VocabNormal()
-            if os.path.isfile(model_valid_dir + 'src_vocab.normal.pkl') and os.path.isfile(model_valid_dir + 'trg_vocab.normal.pkl'):
-                src_vocab.load(model_valid_dir + 'src_vocab.normal.pkl')
-                trg_vocab.load(model_valid_dir + 'trg_vocab.normal.pkl')
-            else:
-                init_vocab = {'<pad>': 0, '<unk>': 1, '<s>': 2, '</s>': 3}
-                src_vocab.build(s_train, False, init_vocab, vocab_size)
-                trg_vocab.build(t_train, False, init_vocab, vocab_size)
-                dataset.save_pickle(model_valid_dir + 'src_vocab.normal.pkl', src_vocab.vocab)
-                dataset.save_pickle(model_valid_dir + 'trg_vocab.normal.pkl', trg_vocab.vocab)
-            src_vocab.set_reverse_vocab()
-            trg_vocab.set_reverse_vocab()
+        """VOCABULARY"""
+        src_vocab, trg_vocab, sos, eos = dataset.prepare_vocab(model_dir, vocab_type, train_src_file, train_trg_file, vocab_size, gpu_id)
+        src_vocab_size = len(src_vocab.vocab)
+        trg_vocab_size = len(trg_vocab.vocab)
 
-            sos = convert.convert_list(np.array([src_vocab.vocab['<s>']], dtype=np.int32), gpu_id)
-            eos = convert.convert_list(np.array([src_vocab.vocab['</s>']], dtype=np.int32), gpu_id)
-            src_vocab_size = len(src_vocab.vocab)
-            trg_vocab_size = len(trg_vocab.vocab)
+        src_initialW = None
+        trg_initialW = None
 
-            if pretrain_w2v:
-                w2v = word2vec.Word2Vec()
-                src_initialW, vector_size, src_match_word_count = w2v.make_initialW(src_vocab.vocab, src_w2v_file)
-                trg_initialW, vector_size, trg_match_word_count = w2v.make_initialW(trg_vocab.vocab, trg_w2v_file)
-                embed_size = vector_size
-                hidden_size = vector_size
-                logger.info('Initialize w2v embedding. Match: src {}/{}, trg {}/{}'.format(src_match_word_count, src_vocab_size, trg_match_word_count, trg_vocab_size))
-
-            elif vocab_type == 'subword':
-                src_vocab = dataset.VocabSubword()
-                trg_vocab = dataset.VocabSubword()
-                if os.path.isfile(model_dir + 'src_vocab.sub.model'):
-                    src_vocab.load(model_dir + 'src_vocab.sub.model')
-                else:
-                    src_vocab.build(train_src_file + '.sub', model_dir + 'src_vocab.sub', vocab_size)
-
-                sos = convert.convert_list(np.array([src_vocab.vocab.PieceToId('<s>')], dtype=np.int32), gpu_id)
-                eos = convert.convert_list(np.array([src_vocab.vocab.PieceToId('</s>')], dtype=np.int32), gpu_id)
-                src_vocab_size = len(src_vocab.vocab)
+        if pretrain_w2v:
+            w2v = word2vec.Word2Vec()
+            src_initialW, vector_size, src_match_word_count = w2v.make_initialW(src_vocab.vocab, src_w2v_file)
+            trg_initialW, vector_size, trg_match_word_count = w2v.make_initialW(trg_vocab.vocab, trg_w2v_file)
+            logger.info('Initialize w2v embedding. Match: src {}/{}, trg {}/{}'.format(src_match_word_count, src_vocab_size, trg_match_word_count, trg_vocab_size))
 
         logger.info('V{} ## train size: {}, dev size: {},test size: {}, src_vocab size: {}, trg_vocab size: {}'.format(ite, len(t_train), len(t_dev), len(t_test), src_vocab_size, trg_vocab_size))
 
-        train_iter = dataset.SuperviseIterator(s_train, l_train, t_train, src_vocab, trg_vocab, batch_size, gpu_id, sort=True, shuffle=True)
-        # train_iter = dataset.SuperviseIterator(s_train, l_train, t_train, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
-        dev_iter = dataset.SuperviseIterator(s_dev, l_dev, t_dev, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
-        test_iter = dataset.SuperviseIterator(s_test, l_test, t_test, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
+        """ITERATOR"""
+        train_iter = dataset.Iterator(s_train, l_train, t_train, src_vocab, trg_vocab, batch_size, gpu_id, sort=True, shuffle=True)
+        # train_iter = dataset.Iterator(s_train, l_train, t_train, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
+        dev_iter = dataset.Iterator(s_dev, l_dev, t_dev, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
+        test_iter = dataset.Iterator(s_test, l_test, t_test, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
 
         evaluater = evaluate.Evaluate()
 
