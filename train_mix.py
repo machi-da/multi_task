@@ -25,7 +25,7 @@ def parse_args():
     parser.add_argument('--pretrain_epoch', '-pe', type=int, default=10)
     parser.add_argument('--interval', '-i', type=int, default=100000)
     parser.add_argument('--gpu', '-g', type=int, default=-1)
-    parser.add_argument('--model', '-m', choices=['multi', 'label', 'encdec', 'pretrain'], default='multi')
+    parser.add_argument('--model', '-m', choices=['multi', 'label', 'encdec', 'pretrain'], default='label')
     parser.add_argument('--vocab', '-v', choices=['normal', 'subword'], default='normal')
     parser.add_argument('--pretrain_w2v', '-p', action='store_true')
     parser.add_argument('--data_path', '-d', choices=['local', 'server', 'test'], default='server')
@@ -112,25 +112,6 @@ def main():
         logger.info('Initialize w2v embedding. Match: src {}/{}, trg {}/{}'.format(src_match_word_count, src_vocab_size, trg_match_word_count, trg_vocab_size))
 
     logger.info('src_vocab size: {}, trg_vocab size: {}'.format(src_vocab_size, trg_vocab_size))
-
-    """MODEL"""
-    if model_type == 'multi':
-        model = model_supervise.Multi(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, coefficient, src_initialW, trg_initialW)
-    elif model_type in ['label', 'pretrain']:
-        model = model_supervise.Label(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, src_initialW, trg_initialW)
-    else:
-        model = model_supervise.EncoderDecoder(src_vocab_size, trg_vocab_size, embed_size, hidden_size, dropout_ratio, src_initialW, trg_initialW)
-    """OPTIMIZER"""
-    optimizer = chainer.optimizers.Adam()
-    optimizer.setup(model)
-    optimizer.add_hook(chainer.optimizer.GradientClipping(gradclip))
-    optimizer.add_hook(chainer.optimizer.WeightDecay(weight_decay))
-
-    """GPU"""
-    if gpu_id >= 0:
-        logger.info('Use GPU')
-        chainer.cuda.get_device_from_id(gpu_id).use()
-        model.to_gpu()
 
     """MAIN"""
     # QAデータ

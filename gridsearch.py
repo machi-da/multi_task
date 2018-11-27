@@ -35,6 +35,7 @@ class GridSearch:
         correct_index = slice_list(ci_data, slice_size)
         label = slice_list(l_data, slice_size)
 
+        dev_score = []
         s_result_total = []
         for i in range(len(correct)):
             c_dev, c_test = split_dev_test(correct, i)
@@ -48,6 +49,7 @@ class GridSearch:
             k = max(best_param_dic, key=lambda x: best_param_dic[x])
             v = best_param_dic[k]
             param.append(k)
+            dev_score.append(float(v))
             self.result_detail.append('{} dev: {} {}'.format(i + 1, k, v))
             init, mix = evaluate.key_to_param(k)
             s_rate, s_count, m_rate, m_count, s_result = self.ev.eval_param(l_test, a_test, c_test, ci_test, init, mix)
@@ -56,12 +58,13 @@ class GridSearch:
             self.result_detail.append(' test: {}'.format(' '.join(s_rate)))
             total = [x + float(y) for x, y in zip(total, s_rate)]
 
+        dev_score = sum(dev_score) / len(correct)
         s_total = total[-1] / len(correct)
         total = ' '.join([str(round(t / len(correct), 3)) for t in total])
         self.result_detail.append('total: {}'.format(total))
 
-        # パラメータ, スコア, スコアの平均, スコアの詳細
-        return '|'.join(param), total, s_total, s_result_total
+        # パラメータ, スコア, スコアの平均, スコアの詳細, devスコア
+        return '|'.join(param), total, s_total, s_result_total, dev_score
 
 
 def slice_list(lit, slice_size):

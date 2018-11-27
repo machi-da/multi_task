@@ -264,11 +264,10 @@ def main():
                 alignments.append(chainer.cuda.to_cpu(a))
 
         if model_type in ['multi', 'label', 'pretrain']:
-            param, total, s_total, s_result_total = gridsearcher.gridsearch(correct_label, correct_index, labels, alignments)
+            _, total, s_total, s_result_total, dev_score = gridsearcher.gridsearch(correct_label, correct_index, labels, alignments)
         else:
-            param, total, s_total, s_result_total = gridsearcher.gridsearch(correct_label, correct_index, raw_score, alignments)
-        logger.info('E{} ## {}'.format(epoch, param))
-        logger.info('E{} ## {}'.format(epoch, total))
+            _, total, s_total, s_result_total, dev_score = gridsearcher.gridsearch(correct_label, correct_index, raw_score, alignments)
+        logger.info('E{} ## dev tuning: {}, {}'.format(epoch, dev_score, total))
 
         dataset.save_output(model_dir, epoch, labels, alignments, outputs)
         accuracy_dic[epoch] = s_total
