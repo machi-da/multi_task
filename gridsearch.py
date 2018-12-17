@@ -4,8 +4,6 @@ import evaluate
 from itertools import zip_longest
 import numpy as np
 
-np.random.seed(1)
-
 
 class GridSearch:
     def __init__(self, valid_num):
@@ -44,7 +42,6 @@ class GridSearch:
             a_dev, a_test = [], []
             if align_list:
                 a_dev, a_test = split_dev_test(align, i)
-
             best_param_dic = self.ev.param_search(l_dev, a_dev, c_dev)
             k = max(best_param_dic, key=lambda x: best_param_dic[x])
             v = best_param_dic[k]
@@ -103,6 +100,7 @@ def split_train_dev_test(lit, index):
 
 
 def shuffle_list(*args):
+    np.random.seed(1)
     zipped = list(zip(*args))
     np.random.shuffle(zipped)
     shuffled_list = zip(*zipped)
@@ -113,9 +111,9 @@ def main(label, align, correct_label, correct_index, valid_num, align_only=False
     gs = GridSearch(valid_num=valid_num)
 
     if align_only:
-        param, total, s_total, s_result = gs.gridsearch(correct_label, correct_index, align, [])
+        param, total, s_total, s_result, dev_score = gs.gridsearch(correct_label, correct_index, align, [])
     else:
-        param, total, s_total, s_result = gs.gridsearch(correct_label, correct_index, label, align)
+        param, total, s_total, s_result, dev_score = gs.gridsearch(correct_label, correct_index, label, align)
 
     if print_flag:
         gs.print_detail()

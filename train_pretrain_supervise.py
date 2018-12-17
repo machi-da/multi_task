@@ -342,7 +342,7 @@ def main():
     logger.info('average: {}'.format(' '.join(average_score)))
 
     with open(model_dir + 's_res.txt', 'w')as f:
-        [f.write('{}\t{}\n'.format(l[0], l[1])) for l in sorted(s_result_total, key=lambda x: x[0])]
+        [f.write('{},{}\n'.format(l[0], l[1])) for l in sorted(s_result_total, key=lambda x: x[0])]
 
 
 if __name__ == '__main__':

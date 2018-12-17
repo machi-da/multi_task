@@ -267,13 +267,13 @@ def main():
             _, total, s_total, s_result_total, dev_score = gridsearcher.gridsearch(correct_label, correct_index, labels, alignments)
         else:
             _, total, s_total, s_result_total, dev_score = gridsearcher.gridsearch(correct_label, correct_index, raw_score, alignments)
-        logger.info('E{} ## dev tuning: {}, {}'.format(epoch, dev_score, total))
+        logger.info('E{} ## dev: {}, {}'.format(epoch, round(dev_score, 3), total))
 
         dataset.save_output(model_dir, epoch, labels, alignments, outputs)
         accuracy_dic[epoch] = s_total
 
         with open(model_dir + 'model_epoch_{}.s_res.txt'.format(epoch), 'w')as f:
-            [f.write('{}\t{}\n'.format(l[0], l[1])) for l in sorted(s_result_total, key=lambda x: x[0])]
+            [f.write('{},{}\n'.format(l[0], l[1])) for l in sorted(s_result_total, key=lambda x: x[0])]
 
     """MODEL SAVE"""
     best_epoch = max(accuracy_dic, key=(lambda x: accuracy_dic[x]))

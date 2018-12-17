@@ -110,6 +110,13 @@ def main():
     split_correct_label = gridsearch.slice_list(correct_label_data, slice_size)
     split_correct_index = gridsearch.slice_list(correct_index_data, slice_size)
 
+    for i in range(1, 6):
+        ci_train, ci_dev, ci_test = gridsearch.split_train_dev_test(split_correct_index, i - 1)
+        with open('{}.txt'.format(i), 'w')as f:
+            for ss in ci_test:
+                f.write('{}\n'.format(ss))
+    exit()
+
     cross_valid_result = []
     s_result_total = []
     for ite in range(1, valid_num + 1):
@@ -339,7 +346,7 @@ def main():
     logger.info('average: {}'.format(' '.join(average_score)))
 
     with open(model_dir + 's_res.txt', 'w')as f:
-        [f.write('{}\t{}\n'.format(l[0], l[1])) for l in sorted(s_result_total, key=lambda x: x[0])]
+        [f.write('{},{}\n'.format(l[0], l[1])) for l in sorted(s_result_total, key=lambda x: x[0])]
 
 
 if __name__ == '__main__':

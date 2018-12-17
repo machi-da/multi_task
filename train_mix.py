@@ -29,6 +29,7 @@ def parse_args():
     parser.add_argument('--vocab', '-v', choices=['normal', 'subword'], default='normal')
     parser.add_argument('--pretrain_w2v', '-p', action='store_true')
     parser.add_argument('--data_path', '-d', choices=['local', 'server', 'test'], default='server')
+    parser.add_argument('--multiple', type=int, default=1)
     args = parser.parse_args()
     return args
 
@@ -47,6 +48,7 @@ def main():
     vocab_type = args.vocab
     pretrain_w2v = args.pretrain_w2v
     data_path = args.data_path
+    multiple= args.multiple
 
     """DIR PREPARE"""
     config.read(config_file)
@@ -62,7 +64,10 @@ def main():
     if model_type == 'multi':
         model_dir = './mix_super_{}_{}{}_{}_c{}_{}/'.format(model_type, vocab_name, vocab_size, data_path[0], coefficient, dir_path_last)
     else:
-        model_dir = './mix_super_{}_{}{}_{}_{}/'.format(model_type, vocab_name, vocab_size, data_path[0], dir_path_last)
+        if multiple == 1:
+            model_dir = './mix_super_{}_{}{}_{}_{}/'.format(model_type, vocab_name, vocab_size, data_path[0], dir_path_last)
+        else:
+            model_dir = './mix_super_{}_{}{}_{}_{}_m{}/'.format(model_type, vocab_name, vocab_size, data_path[0], dir_path_last, multiple)
 
     if not os.path.exists(model_dir):
         os.mkdir(model_dir)
@@ -148,9 +153,15 @@ def main():
             os.mkdir(model_valid_dir)
 
         # QAデータ
-        q_train, _, _ = gridsearch.split_train_dev_test(split_qa_src, ite - 1)
-        ql_train, _, _ = gridsearch.split_train_dev_test(split_qa_label, ite - 1)
-        a_train, _, _ = gridsearch.split_train_dev_test(split_qa_trg, ite - 1)
+        # 18万
+        # q_train, _, _ = gridsearch.split_train_dev_test(split_qa_src, ite - 1)
+        # ql_train, _, _ = gridsearch.split_train_dev_test(split_qa_label, ite - 1)
+        # a_train, _, _ = gridsearch.split_train_dev_test(split_qa_trg, ite - 1)
+
+        # 6万
+        _, q_train, _ = gridsearch.split_train_dev_test(split_qa_src, ite - 1)
+        _, ql_train, _ = gridsearch.split_train_dev_test(split_qa_label, ite - 1)
+        _, a_train, _ = gridsearch.split_train_dev_test(split_qa_trg, ite - 1)
 
         qa_iter = dataset.Iterator(q_train, ql_train, a_train, src_vocab, trg_vocab, batch_size, gpu_id, sort=True)
 
@@ -167,7 +178,7 @@ def main():
         test_iter = dataset.Iterator(s_test, l_test, t_test, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
 
         logger.info('V{} ## QA data: {}, train size: {}, dev size: {},test size: {}'.format(ite, len(q_train), len(t_train), len(t_dev), len(t_test)))
-        mix_train_iter = dataset.MixIterator(qa_iter, train_iter, shuffle=True)
+        mix_train_iter = dataset.MixIterator(qa_iter, train_iter, shuffle=False, multiple=multiple)
 
         """MODEL"""
         model = model_supervise.Label(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, src_initialW, trg_initialW)
@@ -208,7 +219,7 @@ def main():
                         f.write('V{} ## E{} ## train iter: {}\n'.format(ite, epoch, i))
                         f.write(traceback.format_exc())
                         f.write('V{} ## E{} ## [batch detail]'.format(ite, epoch))
-                        for b in batch[0]:
+                        for b in batch[0][0]:
                             [f.write(src_vocab.id2word(chainer.cuda.to_cpu(bb)) + '\n') for bb in b]
             chainer.serializers.save_npz(model_valid_dir + 'model_epoch_{}.npz'.format(epoch), model)
 
@@ -225,7 +236,7 @@ def main():
                         f.write('V{} ## E{} ## dev iter: {}\n'.format(ite, epoch, i))
                         f.write(traceback.format_exc())
                         f.write('V{} ## E{} ## [batch detail]'.format(ite, epoch))
-                        for b in batch[0]:
+                        for b in batch[0][0]:
                             [f.write(src_vocab.id2word(chainer.cuda.to_cpu(bb)) + '\n') for bb in b]
 
                 for l in label:
@@ -291,7 +302,7 @@ def main():
     logger.info('average: {}'.format(' '.join(average_score)))
 
     with open(model_dir + 's_res.txt', 'w')as f:
-        [f.write('{}\t{}\n'.format(l[0], l[1])) for l in sorted(s_result_total, key=lambda x: x[0])]
+        [f.write('{},{}\n'.format(l[0], l[1])) for l in sorted(s_result_total, key=lambda x: x[0])]
 
 
 if __name__ == '__main__':
