@@ -8,3 +8,5 @@ __pycache__/
 *.attn
 *.hypo
 etc/
+s_res/
+test_data/

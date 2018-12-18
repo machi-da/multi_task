@@ -18,9 +18,9 @@ import chainer
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('config_file')
-    parser.add_argument('--batch', '-b', type=int, default=32)
+    parser.add_argument('--batch', '-b', type=int, default=20)
     parser.add_argument('--epoch', '-e', type=int, default=10)
-    parser.add_argument('--pretrain_epoch', '-pe', type=int, default=5)
+    parser.add_argument('--pretrain_epoch', '-pe', type=int, default=10)
     parser.add_argument('--gpu', '-g', type=int, default=-1)
     parser.add_argument('--model', '-m', choices=['multi', 'label', 'encdec', 'pretrain'], default='multi')
     parser.add_argument('--vocab', '-v', choices=['normal', 'subword'], default='normal')
@@ -91,8 +91,6 @@ def main():
     src_w2v_file = config[data_path]['src_w2v_file']
     trg_w2v_file = config[data_path]['trg_w2v_file']
 
-    correct_label, _, correct_index = dataset.load_with_label_index(test_src_file)
-
     train_data_size = dataset.data_size(train_src_file)
     valid_data_size = dataset.data_size(valid_src_file)
     logger.info('train size: {}, valid size: {}'.format(train_data_size, valid_data_size))
@@ -114,18 +112,18 @@ def main():
     logger.info('src_vocab size: {}, trg_vocab size: {}'.format(src_vocab_size, trg_vocab_size))
 
     """ITERATOR"""
-    src_label, src_text = dataset.load_with_label_index(train_src_file)
+    _, src_label, src_text, _ = dataset.load_binary_score_file(train_src_file)
     trg_text = dataset.load(train_trg_file)
     train_iter = dataset.Iterator(src_text, src_label, trg_text, src_vocab, trg_vocab, batch_size, gpu_id, sort=True, shuffle=True)
-    # train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
+    # train_iter = dataset.Iterator(src_text, src_label, trg_text, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
 
-    src_label, src_text = dataset.load_with_label_index(valid_src_file)
+    _, src_label, src_text, _ = dataset.load_binary_score_file(valid_src_file)
     trg_text = dataset.load(valid_trg_file)
     valid_iter = dataset.Iterator(src_text, src_label, trg_text, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
 
-    src_label, src_text = dataset.load_with_label_index(test_src_file)
+    correct_label, correct_binary_label, correct_text, correct_index = dataset.load_binary_score_file(test_src_file)
     trg_text = dataset.load(test_trg_file)
-    test_iter = dataset.Iterator(src_text, src_label, trg_text, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
+    test_iter = dataset.Iterator(correct_text, correct_binary_label, trg_text, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
 
     """MODEL"""
     if model_type == 'multi':
@@ -164,10 +162,11 @@ def main():
                     optimizer.update()
 
                 except Exception as e:
-                    logger.info('P{} ## iteration: {}, {}'.format(epoch, i, e))
+                    logger.info('P{} ## train iter: {}, {}'.format(epoch, i, e))
                     with open(model_dir + 'error_log.txt', 'a')as f:
-                        f.write('P{} ## iteration {}\n'.format(epoch, i))
+                        f.write('P{} ## train iter {}\n'.format(epoch, i))
                         f.write(traceback.format_exc())
+                        f.write('P{} ## [batch detail]\n'.format(epoch))
                         for b in batch[0]:
                             [f.write(src_vocab.id2word(chainer.cuda.to_cpu(bb)) + '\n') for bb in b]
             chainer.serializers.save_npz(model_dir + 'p_model_epoch_{}.npz'.format(epoch), model)
@@ -203,7 +202,7 @@ def main():
                 with open(model_dir + 'error_log.txt', 'a')as f:
                     f.write('E{} ## train iter: {}\n'.format(epoch, i))
                     f.write(traceback.format_exc())
-                    f.write('E{} ## [batch detail]'.format(epoch))
+                    f.write('E{} ## [batch detail]\n'.format(epoch))
                     for b in batch[0]:
                         [f.write(src_vocab.id2word(chainer.cuda.to_cpu(bb)) + '\n') for bb in b]
         chainer.serializers.save_npz(model_dir + 'model_epoch_{}.npz'.format(epoch), model)
@@ -221,7 +220,7 @@ def main():
                 with open(model_dir + 'error_log.txt', 'a')as f:
                     f.write('E{} ## test iter: {}\n'.format(epoch, i))
                     f.write(traceback.format_exc())
-                    f.write('E{} ## [batch detail]'.format(epoch))
+                    f.write('E{} ## [batch detail]\n'.format(epoch))
                     for b in batch[0]:
                         [f.write(src_vocab.id2word(chainer.cuda.to_cpu(bb)) + '\n') for bb in b]
 
@@ -241,9 +240,9 @@ def main():
 
         # log保存
         logger.info('E{} ## dev: {}, test: {}'.format(epoch, dev_score, test_score))
-        logger.info('E{} ## {}'.format(epoch, dataset.float_to_str(test_score_list[-1])))
-        for i, l in enumerate(test_score_list[:-1]):
-            logger.info('E{} ## {}\t{}'.format(epoch, i, dataset.float_to_str(l)))
+        logger.info('E{} ## {}'.format(epoch, ' '.join(dataset.float_to_str(test_score_list[-1]))))
+        for i, (l, p) in enumerate(zip(test_score_list[:-1], param_list), start=1):
+            logger.info('E{} ##   {}: {}\t{}'.format(epoch, i, p, ' '.join(dataset.float_to_str(l))))
 
         # 結果保存
         dataset.save_output(model_dir, epoch, labels, alignments, outputs, s_result_list)

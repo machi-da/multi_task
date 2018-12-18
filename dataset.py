@@ -27,16 +27,17 @@ def load(file_name):
 def load_with_label_binary(file_name):
     label_lit = []
     text = []
+
     with open(file_name, 'r')as f:
         data = f.readlines()
     for d in data:
-        t = []
         label, sentences = d.strip().split('\t')
-        sentences = sentences.split('|||')
         l_index = [int(l)-1 for l in label.split(',')]
         label = np.array([1 if i in l_index else 0 for i in range(len(sentences))], dtype=np.int32)
         label_lit.append(label)
 
+        sentences = sentences.split('|||')
+        t = []
         for sentence in sentences:
             t.append(sentence.split(' '))
         text.append(t)
@@ -61,26 +62,30 @@ def load_with_label_reg(file_name):
     return label_lit, text
 
 
-def load_with_label_index(file_name):
+def load_binary_score_file(file_name, separator='|||'):
     label_lit = []
+    binary_label_lit = []
     text = []
-    index = []
+    index_lit = []
 
     with open(file_name, 'r')as f:
         data = f.readlines()
-    for i, d in enumerate(data, start=1):
+    for index, d in enumerate(data, start=1):
         label, sentences = d.strip().split('\t')
-        label = [int(l) - 1 for l in label.split(',')]
-        sentences = sentences.split('|||')
+        sentences = sentences.split(separator)
 
+        label = [int(l) - 1 for l in label.split(',')]
         label_lit.append(label)
+        binary = np.array([1 if i in label else 0 for i in range(len(sentences))], dtype=np.int32)
+        binary_label_lit.append(binary)
+
         t = []
         for sentence in sentences:
             t.append(sentence.split(' '))
         text.append(t)
-        index.append(i)
+        index_lit.append(index)
 
-    return label_lit, text, index
+    return label_lit, binary_label_lit, text, index_lit
 
 
 def load_score_file(score_file):
@@ -122,7 +127,7 @@ def save_output(save_dir, epoch, label_data, align_data, hypo_data, s_result_lis
     if hypo_data:
         with open(save_dir + 'model_epoch_{}.align'.format(epoch), 'w')as f:
             [f.write('{}\n'.format(a)) for a in align_data]
-    with open(save_dir + 'model_epoch_{}.s_res.txt', 'w')as f:
+    with open(save_dir + 'model_epoch_{}.s_res.txt'.format(epoch), 'w')as f:
         [f.write('{}\n'.format(l[1])) for l in sorted(s_result_list, key=lambda x: x[0])]
     return
 
