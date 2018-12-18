@@ -112,7 +112,7 @@ def save_pickle(file_name, data):
     return
 
 
-def save_output(save_dir, epoch, label_data, align_data, hypo_data):
+def save_output(save_dir, epoch, label_data, align_data, hypo_data, s_result_list):
     if label_data:
         with open(save_dir + 'model_epoch_{}.label'.format(epoch), 'w')as f:
             [f.write('{}\n'.format(l)) for l in label_data]
@@ -122,6 +122,8 @@ def save_output(save_dir, epoch, label_data, align_data, hypo_data):
     if hypo_data:
         with open(save_dir + 'model_epoch_{}.align'.format(epoch), 'w')as f:
             [f.write('{}\n'.format(a)) for a in align_data]
+    with open(save_dir + 'model_epoch_{}.s_res.txt', 'w')as f:
+        [f.write('{}\n'.format(l[1])) for l in sorted(s_result_list, key=lambda x: x[0])]
     return
 
 
@@ -139,6 +141,10 @@ def copy_best_output(save_dir, best_epoch):
     except FileNotFoundError:
         pass
     return
+
+
+def float_to_str(lit):
+    return [str(l) for l in lit]
 
 
 def prepare_vocab(model_dir, vocab_type, src_file, trg_file, vocab_size, gpu_id):
@@ -371,90 +377,3 @@ class MixIterator:
 
         for batch in batches:
             yield batch[0], batch[1]
-
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('model_dir')
-    args = parser.parse_args()
-
-    model_dir = args.model_dir
-    if 'normal' in model_dir:
-        vocab_type = 'normal'
-    else:
-        vocab_type = 'subword'
-    """LOAD CONFIG FILE"""
-    config_files = glob.glob(os.path.join(model_dir, '*.ini'))
-    assert len(config_files) == 1, 'Put only one config file in the directory'
-    config_file = config_files[0]
-    config = configparser.ConfigParser()
-    config.read(config_file)
-
-    gpu_id = -1
-    data_type = model_dir.split('_')[2]
-    reg = False if data_type == 'l' or data_type == 's' else True
-
-    vocab_size = int(config['Parameter']['vocab_size'])
-
-    if data_type == 'l':
-        section = 'Local'
-    elif data_type == 'lr':
-        section = 'Local_Reg'
-    elif data_type == 's':
-        section = 'Server'
-    else:
-        section = 'Server_Reg'
-    train_src_file = config[section]['train_src_file']
-    train_trg_file = config[section]['train_trg_file']
-    valid_src_file = config[section]['valid_src_file']
-    valid_trg_file = config[section]['valid_trg_file']
-    test_src_file = config[section]['test_src_file']
-
-    if vocab_type == 'normal':
-        src_vocab = VocabNormal(reg)
-        trg_vocab = VocabNormal(reg)
-        if os.path.isfile(model_dir + 'src_vocab.normal.pkl') and os.path.isfile(model_dir + 'trg_vocab.normal.pkl'):
-            src_vocab.load(model_dir + 'src_vocab.normal.pkl')
-            trg_vocab.load(model_dir + 'trg_vocab.normal.pkl')
-        else:
-            init_vocab = {'<pad>': 0, '<unk>': 1, '<s>': 2, '</s>': 3}
-            src_vocab.build(train_src_file, True,  init_vocab, vocab_size)
-            trg_vocab.build(train_trg_file, False, init_vocab, vocab_size)
-            save_pickle(model_dir + 'src_vocab.normal.pkl', src_vocab.vocab)
-            save_pickle(model_dir + 'trg_vocab.normal.pkl', trg_vocab.vocab)
-        src_vocab.set_reverse_vocab()
-        trg_vocab.set_reverse_vocab()
-
-        sos = convert.convert_list(np.array([src_vocab.vocab['<s>']], dtype=np.int32), gpu_id)
-        eos = convert.convert_list(np.array([src_vocab.vocab['</s>']], dtype=np.int32), gpu_id)
-
-    elif vocab_type == 'subword':
-        src_vocab = VocabSubword()
-        trg_vocab = VocabSubword()
-        if os.path.isfile(model_dir + 'src_vocab.sub.model') and os.path.isfile(model_dir + 'trg_vocab.sub.model'):
-            src_vocab.load(model_dir + 'src_vocab.sub.model')
-            trg_vocab.load(model_dir + 'trg_vocab.sub.model')
-        else:
-            src_vocab.build(train_src_file + '.sub', model_dir + 'src_vocab.sub', vocab_size)
-            trg_vocab.build(train_trg_file + '.sub', model_dir + 'trg_vocab.sub', vocab_size)
-
-        sos = convert.convert_list(np.array([src_vocab.vocab.PieceToId('<s>')], dtype=np.int32), gpu_id)
-        eos = convert.convert_list(np.array([src_vocab.vocab.PieceToId('</s>')], dtype=np.int32), gpu_id)
-
-    src_file = test_src_file
-    trg_file = train_trg_file
-
-    if reg:
-        label, src = load_with_label_reg(src_file)
-    else:
-        label, src = load_with_label(src_file)
-    trg = load(trg_file)
-
-    for i, (s, t) in enumerate(zip(src, trg), start=1):
-        print('{} src'.format(i))
-        for ss in s:
-            print(ss)
-            print(src_vocab.word2id(ss, sos, eos))
-        # print('{} trg'.format(i))
-        # print(t)
-        # print(trg_vocab.word2id(t))

@@ -1,14 +1,13 @@
 import argparse
 import configparser
 import os
-import re
 import shutil
 import numpy as np
 import traceback
 
 import dataset
 import gridsearch
-import model_reg
+import model_supervise
 import word2vec
 
 np.set_printoptions(precision=3)
@@ -22,7 +21,6 @@ def parse_args():
     parser.add_argument('--batch', '-b', type=int, default=32)
     parser.add_argument('--epoch', '-e', type=int, default=10)
     parser.add_argument('--pretrain_epoch', '-pe', type=int, default=5)
-    parser.add_argument('--interval', '-i', type=int, default=100000)
     parser.add_argument('--gpu', '-g', type=int, default=-1)
     parser.add_argument('--model', '-m', choices=['multi', 'label', 'encdec', 'pretrain'], default='multi')
     parser.add_argument('--vocab', '-v', choices=['normal', 'subword'], default='normal')
@@ -40,7 +38,6 @@ def main():
     batch_size = args.batch
     n_epoch = args.epoch
     pretrain_epoch = args.pretrain_epoch
-    interval = args.interval
     gpu_id = args.gpu
     model_type = args.model
     vocab_type = args.vocab
@@ -51,17 +48,15 @@ def main():
     config.read(config_file)
     vocab_size = int(config['Parameter']['vocab_size'])
     coefficient = float(config['Parameter']['coefficient'])
-    base_dir = config[data_path]['base_dir']
-    dir_path_last = re.search(r'.*/(.*?)$', base_dir).group(1)
 
     vocab_name = vocab_type
     if pretrain_w2v:
         vocab_name = 'p' + vocab_name
 
     if model_type == 'multi':
-        model_dir = './{}_{}{}_{}_c{}_{}/'.format(model_type, vocab_name, vocab_size, data_path[0], coefficient, dir_path_last)
+        model_dir = './{}_{}{}_{}_c{}/'.format(model_type, vocab_name, vocab_size, data_path[0], coefficient)
     else:
-        model_dir = './{}_{}{}_{}_{}/'.format(model_type, vocab_name, vocab_size, data_path[0], dir_path_last)
+        model_dir = './{}_{}{}_{}/'.format(model_type, vocab_name, vocab_size, data_path[0])
 
     if not os.path.exists(model_dir):
         os.mkdir(model_dir)
@@ -91,9 +86,8 @@ def main():
     train_trg_file = config[data_path]['train_trg_file']
     valid_src_file = config[data_path]['valid_src_file']
     valid_trg_file = config[data_path]['valid_trg_file']
-    test_src_file = config[data_path]['test_src_file']
-    raw_score_file = config[data_path]['raw_score_file']
-    raw_score = dataset.load_score_file(raw_score_file)
+    test_src_file = config[data_path]['single_src_file']
+    test_trg_file = config[data_path]['single_trg_file']
     src_w2v_file = config[data_path]['src_w2v_file']
     trg_w2v_file = config[data_path]['trg_w2v_file']
 
@@ -120,28 +114,28 @@ def main():
     logger.info('src_vocab size: {}, trg_vocab size: {}'.format(src_vocab_size, trg_vocab_size))
 
     """ITERATOR"""
-    src_label, src_text = dataset.load_with_label_reg(train_src_file)
+    src_label, src_text = dataset.load_with_label_index(train_src_file)
     trg_text = dataset.load(train_trg_file)
     train_iter = dataset.Iterator(src_text, src_label, trg_text, src_vocab, trg_vocab, batch_size, gpu_id, sort=True, shuffle=True)
     # train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
 
-    src_label, src_text = dataset.load_with_label_reg(valid_src_file)
+    src_label, src_text = dataset.load_with_label_index(valid_src_file)
     trg_text = dataset.load(valid_trg_file)
     valid_iter = dataset.Iterator(src_text, src_label, trg_text, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
 
-    src_label, src_text = dataset.load_with_label_reg(test_src_file)
-    trg_text = dataset.load(test_src_file)
+    src_label, src_text = dataset.load_with_label_index(test_src_file)
+    trg_text = dataset.load(test_trg_file)
     test_iter = dataset.Iterator(src_text, src_label, trg_text, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
-
-    gridsearcher = gridsearch.GridSearch(valid_num=valid_num)
 
     """MODEL"""
     if model_type == 'multi':
-        model = model_reg.Multi(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, coefficient, src_initialW, trg_initialW)
+        model = model_supervise.Multi(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, coefficient, src_initialW, trg_initialW)
     elif model_type in ['label', 'pretrain']:
-        model = model_reg.Label(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, src_initialW, trg_initialW)
+        model = model_supervise.Label(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, src_initialW, trg_initialW)
     else:
-        model = model_reg.EncoderDecoder(src_vocab_size, trg_vocab_size, embed_size, hidden_size, dropout_ratio, src_initialW, trg_initialW)
+        model = model_supervise.EncoderDecoder(src_vocab_size, trg_vocab_size, embed_size, hidden_size, dropout_ratio, src_initialW, trg_initialW)
+
+    gridsearcher = gridsearch.GridSearch(valid_num)
 
     """OPTIMIZER"""
     optimizer = chainer.optimizers.Adam()
@@ -169,10 +163,6 @@ def main():
                     loss.backward()
                     optimizer.update()
 
-                    if i % interval == 0:
-                        logger.info('P{} ## iteration:{}, loss:{}'.format(epoch, i, train_loss))
-                        train_loss = 0
-
                 except Exception as e:
                     logger.info('P{} ## iteration: {}, {}'.format(epoch, i, e))
                     with open(model_dir + 'error_log.txt', 'a')as f:
@@ -187,13 +177,13 @@ def main():
             for batch in valid_iter.generate():
                 with chainer.no_backprop_mode(), chainer.using_config('train', False):
                     valid_loss += model.pretrain(*batch).data
-            logger.info('P{} ## val loss:{}'.format(epoch, valid_loss))
+            logger.info('P{} ## train loss: {}, val loss:{}'.format(epoch, train_loss, valid_loss))
             pretrain_loss_dic[epoch] = valid_loss
 
         """MODEL SAVE & LOAD"""
         best_epoch = min(pretrain_loss_dic, key=(lambda x: pretrain_loss_dic[x]))
-        logger.info('best_epoch:{}'.format(best_epoch))
-        chainer.serializers.save_npz(model_dir + 'p_best_model.npz', model)
+        logger.info('best_epoch:{}, val loss: {}'.format(best_epoch, pretrain_loss_dic[best_epoch]))
+        shutil.copyfile(model_dir + 'p_model_epoch_{}.npz'.format(best_epoch), model_dir + 'p_best_model.npz')
         logger.info('Pre-train finish')
 
     """TRAIN"""
@@ -208,10 +198,6 @@ def main():
                 loss.backward()
                 optimizer.update()
 
-                if i % interval == 0:
-                    logger.info('E{} ## iteration:{}, loss:{}'.format(epoch, i, train_loss))
-                    train_loss = 0
-
             except Exception as e:
                 logger.info('E{} ## train iter: {}, {}'.format(epoch, i, e))
                 with open(model_dir + 'error_log.txt', 'a')as f:
@@ -222,24 +208,7 @@ def main():
                         [f.write(src_vocab.id2word(chainer.cuda.to_cpu(bb)) + '\n') for bb in b]
         chainer.serializers.save_npz(model_dir + 'model_epoch_{}.npz'.format(epoch), model)
 
-        """EVALUATE"""
-        valid_loss = 0
-        for i, batch in enumerate(valid_iter.generate(), start=1):
-            try:
-                with chainer.no_backprop_mode(), chainer.using_config('train', False):
-                    valid_loss += optimizer.target(*batch).data
-            except Exception as e:
-                logger.info('E{} ## valid iter: {}, {}'.format(epoch, i, e))
-                with open(model_dir + 'error_log.txt', 'a')as f:
-                    f.write('E{} ## valid iter: {}\n'.format(epoch, i))
-                    f.write(traceback.format_exc())
-                    f.write('E{} ## [batch detail]'.format(epoch))
-                    for b in batch[0]:
-                        [f.write(src_vocab.id2word(chainer.cuda.to_cpu(bb)) + '\n') for bb in b]
-
-        logger.info('E{} ## train loss: {}, val loss:{}'.format(epoch, train_loss, valid_loss))
-
-        """TEST"""
+        """DEV & TEST"""
         outputs = []
         labels = []
         alignments = []
@@ -264,21 +233,25 @@ def main():
                 alignments.append(chainer.cuda.to_cpu(a))
 
         if model_type in ['multi', 'label', 'pretrain']:
-            _, total, s_total, s_result_total, dev_score = gridsearcher.gridsearch(correct_label, correct_index, labels, alignments)
+            dev_score, test_score, param_list, test_score_list, s_result_list = gridsearcher.gridsearch(correct_label, correct_index, labels, alignments)
         else:
-            _, total, s_total, s_result_total, dev_score = gridsearcher.gridsearch(correct_label, correct_index, raw_score, alignments)
-        logger.info('E{} ## dev: {}, {}'.format(epoch, round(dev_score, 3), total))
+            dev_score, test_score, param_list, test_score_list, s_result_list = gridsearcher.gridsearch(correct_label, correct_index, alignments, [])
 
-        dataset.save_output(model_dir, epoch, labels, alignments, outputs)
-        accuracy_dic[epoch] = s_total
+        accuracy_dic[epoch] = [dev_score, test_score]
 
-        with open(model_dir + 'model_epoch_{}.s_res.txt'.format(epoch), 'w')as f:
-            [f.write('{},{}\n'.format(l[0], l[1])) for l in sorted(s_result_total, key=lambda x: x[0])]
+        # log保存
+        logger.info('E{} ## dev: {}, test: {}'.format(epoch, dev_score, test_score))
+        logger.info('E{} ## {}'.format(epoch, dataset.float_to_str(test_score_list[-1])))
+        for i, l in enumerate(test_score_list[:-1]):
+            logger.info('E{} ## {}\t{}'.format(epoch, i, dataset.float_to_str(l)))
+
+        # 結果保存
+        dataset.save_output(model_dir, epoch, labels, alignments, outputs, s_result_list)
 
     """MODEL SAVE"""
-    best_epoch = max(accuracy_dic, key=(lambda x: accuracy_dic[x]))
-    logger.info('best_epoch:{}, score: {}, {}'.format(best_epoch, accuracy_dic[best_epoch], model_dir))
-    chainer.serializers.save_npz(model_dir + 'best_model.npz', model)
+    best_epoch = max(accuracy_dic, key=(lambda x: accuracy_dic[x][0]))
+    logger.info('best_epoch:{}, dev: {}, test: {}, {}'.format(best_epoch, accuracy_dic[best_epoch][0], accuracy_dic[best_epoch][1], model_dir))
+    shutil.copyfile(model_dir + 'model_epoch_{}.npz'.format(best_epoch), model_dir + 'best_model.npz')
 
 
 if __name__ == '__main__':

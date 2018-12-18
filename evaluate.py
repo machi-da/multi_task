@@ -174,15 +174,20 @@ class Evaluate:
                     if r[0][1]:  # 一番スコアの高い文(rの0番目)が正解ラベル判定でTrueかどうか
                         score_dic[sent_num][0] += 1
 
-        t_correct, t = sum([v[0] for k, v in score_dic.items()]), sum([v[1] for k, v in score_dic.items()])
+        # 分母が0の時1に直す
         for v in score_dic.values():
             if v[1] == 0:
                 v[1] = 1
-        rate = [str(round(v[0] / v[1], 3)) for k, v in score_dic.items()]
+
+        # スコアの集計
+        rate = [v[0] / v[1] for k, v in score_dic.items()]
         micro_rate = sum([v[0] / v[1] for k, v in score_dic.items()]) / len(rate)
-        rate.append(str(round(micro_rate, 3)))
+        rate.append(micro_rate)
+
+        correct_num = sum([v[0] for k, v in score_dic.items()])
+        total_num = sum([v[1] for k, v in score_dic.items()])
         count = ['{}/{}'.format(v[0], v[1]) for k, v in score_dic.items()]
-        count.append('{}/{}'.format(t_correct, t))
+        count.append('{}/{}'.format(correct_num, total_num))
 
         return rate, count, result
 
