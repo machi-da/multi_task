@@ -163,12 +163,12 @@ def main():
 
                 except Exception as e:
                     logger.info('P{} ## train iter: {}, {}'.format(epoch, i, e))
-                    with open(model_dir + 'error_log.txt', 'a')as f:
-                        f.write('P{} ## train iter {}\n'.format(epoch, i))
-                        f.write(traceback.format_exc())
-                        f.write('P{} ## [batch detail]\n'.format(epoch))
-                        for b in batch[0]:
-                            [f.write(src_vocab.id2word(chainer.cuda.to_cpu(bb)) + '\n') for bb in b]
+                    # with open(model_dir + 'error_log.txt', 'a')as f:
+                    #     f.write('P{} ## train iter {}\n'.format(epoch, i))
+                    #     f.write(traceback.format_exc())
+                    #     f.write('P{} ## [batch detail]\n'.format(epoch))
+                    #     for b in batch[0]:
+                    #         [f.write(src_vocab.id2word(chainer.cuda.to_cpu(bb)) + '\n') for bb in b]
             chainer.serializers.save_npz(model_dir + 'p_model_epoch_{}.npz'.format(epoch), model)
 
             """EVALUATE"""
@@ -199,12 +199,12 @@ def main():
 
             except Exception as e:
                 logger.info('E{} ## train iter: {}, {}'.format(epoch, i, e))
-                with open(model_dir + 'error_log.txt', 'a')as f:
-                    f.write('E{} ## train iter: {}\n'.format(epoch, i))
-                    f.write(traceback.format_exc())
-                    f.write('E{} ## [batch detail]\n'.format(epoch))
-                    for b in batch[0]:
-                        [f.write(src_vocab.id2word(chainer.cuda.to_cpu(bb)) + '\n') for bb in b]
+                # with open(model_dir + 'error_log.txt', 'a')as f:
+                #     f.write('E{} ## train iter: {}\n'.format(epoch, i))
+                #     f.write(traceback.format_exc())
+                #     f.write('E{} ## [batch detail]\n'.format(epoch))
+                #     for b in batch[0]:
+                #         [f.write(src_vocab.id2word(chainer.cuda.to_cpu(bb)) + '\n') for bb in b]
         chainer.serializers.save_npz(model_dir + 'model_epoch_{}.npz'.format(epoch), model)
 
         """DEV & TEST"""
@@ -217,19 +217,25 @@ def main():
                     output, label, align = model.predict(batch[0], sos, eos)
             except Exception as e:
                 logger.info('E{} ## test iter: {}, {}'.format(epoch, i, e))
-                with open(model_dir + 'error_log.txt', 'a')as f:
-                    f.write('E{} ## test iter: {}\n'.format(epoch, i))
-                    f.write(traceback.format_exc())
-                    f.write('E{} ## [batch detail]\n'.format(epoch))
-                    for b in batch[0]:
-                        [f.write(src_vocab.id2word(chainer.cuda.to_cpu(bb)) + '\n') for bb in b]
+                # with open(model_dir + 'error_log.txt', 'a')as f:
+                #     f.write('E{} ## test iter: {}\n'.format(epoch, i))
+                #     f.write(traceback.format_exc())
+                #     f.write('E{} ## [batch detail]\n'.format(epoch))
+                #     for b in batch[0]:
+                #         [f.write(src_vocab.id2word(chainer.cuda.to_cpu(bb)) + '\n') for bb in b]
 
-            for o in output:
-                outputs.append(trg_vocab.id2word(chainer.cuda.to_cpu(o)))
-            for l in label:
-                labels.append(chainer.cuda.to_cpu(l))
-            for a in align:
-                alignments.append(chainer.cuda.to_cpu(a))
+            if model_type == 'multi':
+                for o, l, a in zip(output, label, align):
+                    outputs.append(trg_vocab.id2word(chainer.cuda.to_cpu(o)))
+                    labels.append(chainer.cuda.to_cpu(l))
+                    alignments.append(chainer.cuda.to_cpu(a))
+            elif model_type in ['label', 'pretrain']:
+                for o, l, a in zip(output, label, align):
+                    labels.append(chainer.cuda.to_cpu(l))
+            else:
+                for o, l, a in zip(output, label, align):
+                    outputs.append(trg_vocab.id2word(chainer.cuda.to_cpu(o)))
+                    alignments.append(chainer.cuda.to_cpu(a))
 
         if model_type in ['multi', 'label', 'pretrain']:
             dev_score, test_score, param_list, test_score_list, s_result_list = gridsearcher.gridsearch(correct_label, correct_index, labels, alignments)
