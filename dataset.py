@@ -1,11 +1,7 @@
-import argparse
 import copy
-import configparser
-import glob
 import pickle
 import os
 import random
-import shutil
 import numpy as np
 import sentencepiece as spm
 import logging
@@ -129,22 +125,6 @@ def save_output(save_dir, epoch, label_data, align_data, hypo_data, s_result_lis
             [f.write('{}\n'.format(a)) for a in align_data]
     with open(save_dir + 'model_epoch_{}.s_res.txt'.format(epoch), 'w')as f:
         [f.write('{}\n'.format(l[1])) for l in sorted(s_result_list, key=lambda x: x[0])]
-    return
-
-
-def copy_best_output(save_dir, best_epoch):
-    try:
-        shutil.copy(save_dir + 'model_epoch_{}.label'.format(best_epoch), save_dir + 'best_model.label')
-    except FileNotFoundError:
-        pass
-    try:
-        shutil.copy(save_dir + 'model_epoch_{}.hypo'.format(best_epoch), save_dir + 'best_model.hypo')
-    except FileNotFoundError:
-        pass
-    try:
-        shutil.copy(save_dir + 'model_epoch_{}.align'.format(best_epoch), save_dir + 'best_model.aligh')
-    except FileNotFoundError:
-        pass
     return
 
 
@@ -363,8 +343,10 @@ class Iterator:
 
 class MixIterator:
     def __init__(self, iterator1, iterator2, shuffle=True, multiple=1):
+        weight = 1
         # iterator1を大きいデータサイズのiteratorに指定する
-        weight = 1 / (iterator1.size // iterator2.size)
+        if iterator1.size // iterator2.size != 0:
+            weight = 1 / (iterator1.size // iterator2.size)
 
         self.batches = []
         for batch in iterator1.batches:

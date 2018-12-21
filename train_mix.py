@@ -1,7 +1,6 @@
 import argparse
 import configparser
 import os
-import re
 import shutil
 import numpy as np
 import traceback
@@ -145,13 +144,13 @@ def main():
         if not os.path.exists(model_valid_dir):
             os.mkdir(model_valid_dir)
 
-        index = index
+        index = ite - 1
         # QAデータ
         _, qa_label_train, _ = gridsearch.split_train_dev_test(qa_label, index)
         _, qa_src_train, _ = gridsearch.split_train_dev_test(qa_src_text, index)
         _, qa_trg_train, _ = gridsearch.split_train_dev_test(qa_trg_text, index)
 
-        qa_iter = dataset.Iterator(qa_label_train, qa_src_train, qa_trg_train, src_vocab, trg_vocab, batch_size, gpu_id, sort=True)
+        qa_iter = dataset.Iterator(qa_src_train, qa_label_train, qa_trg_train, src_vocab, trg_vocab, batch_size, gpu_id, sort=True)
 
         # ラベルデータ
         c_label_train, c_label_dev, c_label_test = gridsearch.split_train_dev_test(correct_label, index)
@@ -211,7 +210,7 @@ def main():
             for i, batch in enumerate(dev_iter.generate(), start=1):
                 try:
                     with chainer.no_backprop_mode(), chainer.using_config('train', False):
-                        _, label, label = model.predict(batch[0], sos, eos)
+                        _, label, align = model.predict(batch[0], sos, eos)
                 except Exception as e:
                     logger.info('V{} ## E{} ## dev iter: {}, {}'.format(ite, epoch, i, e))
                     # with open(model_dir + 'error_log.txt', 'a')as f:
@@ -221,15 +220,14 @@ def main():
                     #     for b in batch[0][0]:
                     #         [f.write(src_vocab.id2word(chainer.cuda.to_cpu(bb)) + '\n') for bb in b]
 
-                for o, l, a in zip(output, label, align):
+                for l, a in zip(label, align):
                     labels.append(chainer.cuda.to_cpu(l))
                     alignments.append(chainer.cuda.to_cpu(a))
 
             best_param_dic = evaluater.param_search(labels, alignments, c_label_dev)
             param = max(best_param_dic, key=lambda x: best_param_dic[x])
             init, mix = evaluate.key_to_param(param)
-            dev_score = best_param_dic[param]
-            logger.info('V{} ## E{} ## train loss: {}, dev tuning: {}, {}'.format(ite, epoch, train_loss, k, v))
+            dev_score = round(best_param_dic[param], 3)
 
             """TEST"""
             outputs = []
@@ -254,7 +252,7 @@ def main():
                     alignments.append(chainer.cuda.to_cpu(a))
 
             s_rate, s_count, _, _, s_result = evaluater.eval_param(labels, alignments, c_label_test, c_index_test, init, mix)
-            test_score = s_rate[-1]
+            test_score = round(s_rate[-1], 3)
             s_result_dic[epoch] = s_result
             logger.info('V{} ## E{} ## loss:{}, dev: {}, test: {}'.format(ite, epoch, train_loss, dev_score, test_score))
 
