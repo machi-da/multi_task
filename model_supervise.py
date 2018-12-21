@@ -152,14 +152,14 @@ class Multi(chainer.Chain):
 
         return loss
 
-    def pretrain(self, sources, targets_sos, targets_eos, label_gold):
+    def pretrain(self, sources, targets_sos, targets_eos, label_gold, weight=1.0):
         hs, cs, enc_ys = self.encode(sources)
         word_hy, word_cy, word_ys, alignment = self.wordDec(hs, cs, targets_sos, enc_ys)
 
         targets_eos = F.pad_sequence(targets_eos, length=None, padding=0)
         concat_word_ys = F.concat(word_ys, axis=0)
         concat_word_ys_gold = F.concat(targets_eos, axis=0)
-        loss = self.lossfun(concat_word_ys, concat_word_ys_gold, ignore_label=0)
+        loss = weight * self.lossfun(concat_word_ys, concat_word_ys_gold, ignore_label=0)
 
         return loss
 

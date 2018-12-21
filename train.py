@@ -150,9 +150,9 @@ def main():
     """PRETRAIN"""
     if model_type == 'pretrain':
         logger.info('Pre-train start')
-        train_loss = 0
         pretrain_loss_dic = {}
         for epoch in range(1, pretrain_epoch + 1):
+            train_loss = 0
             for i, batch in enumerate(train_iter.generate(), start=1):
                 try:
                     loss = model.pretrain(*batch)
@@ -245,7 +245,7 @@ def main():
         accuracy_dic[epoch] = [dev_score, test_score]
 
         # log保存
-        logger.info('E{} ## dev: {}, test: {}'.format(epoch, dev_score, test_score))
+        logger.info('E{} ## loss:{}, dev: {}, test: {}'.format(epoch, train_loss, dev_score, test_score))
         logger.info('E{} ## {}'.format(epoch, ' '.join(dataset.float_to_str(test_score_list[-1]))))
         for i, (l, p) in enumerate(zip(test_score_list[:-1], param_list), start=1):
             logger.info('E{} ##   {}: {}\t{}'.format(epoch, i, p, ' '.join(dataset.float_to_str(l))))
