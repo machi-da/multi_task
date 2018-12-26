@@ -230,10 +230,10 @@ def main():
                     labels.append(chainer.cuda.to_cpu(l))
                     alignments.append(chainer.cuda.to_cpu(a))
             elif model_type in ['label', 'pretrain']:
-                for o, l, a in zip(output, label, align):
+                for l in label:
                     labels.append(chainer.cuda.to_cpu(l))
             else:
-                for o, l, a in zip(output, label, align):
+                for o, a in zip(output, align):
                     outputs.append(trg_vocab.id2word(chainer.cuda.to_cpu(o)))
                     alignments.append(chainer.cuda.to_cpu(a))
 

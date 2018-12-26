@@ -1,7 +1,6 @@
 import argparse
 import configparser
 import os
-import re
 import shutil
 import numpy as np
 import traceback
@@ -170,7 +169,7 @@ def main():
             logger.info('P{} ## train loss: {}, val loss:{}'.format(epoch, train_loss, valid_loss))
             pretrain_loss_dic[epoch] = valid_loss
 
-        """MODEL SAVE & LOAD"""
+        """MODEL SAVE"""
         best_epoch = min(pretrain_loss_dic, key=(lambda x: pretrain_loss_dic[x]))
         logger.info('best_epoch:{}, val loss: {}'.format(best_epoch, pretrain_loss_dic[best_epoch]))
         shutil.copyfile(model_dir + 'p_model_epoch_{}.npz'.format(best_epoch), model_dir + 'p_best_model.npz')
@@ -247,12 +246,13 @@ def main():
             chainer.serializers.save_npz(model_valid_dir + 'model_epoch_{}.npz'.format(epoch), model)
 
             """DEV"""
+            outputs = []
             labels = []
             alignments = []
             for i, batch in enumerate(dev_iter.generate(), start=1):
                 try:
                     with chainer.no_backprop_mode(), chainer.using_config('train', False):
-                        _, label, align = model.predict(batch[0], sos, eos)
+                        output, label, align = model.predict(batch[0], sos, eos)
                 except Exception as e:
                     logger.info('V{} ## E{} ## dev iter: {}, {}'.format(ite, epoch, i, e))
                     # with open(model_dir + 'error_log.txt', 'a')as f:
@@ -268,10 +268,10 @@ def main():
                         labels.append(chainer.cuda.to_cpu(l))
                         alignments.append(chainer.cuda.to_cpu(a))
                 elif model_type in ['label', 'pretrain']:
-                    for o, l, a in zip(output, label, align):
+                    for l in label:
                         labels.append(chainer.cuda.to_cpu(l))
                 else:
-                    for o, l, a in zip(output, label, align):
+                    for o, a in zip(output, align):
                         outputs.append(trg_vocab.id2word(chainer.cuda.to_cpu(o)))
                         alignments.append(chainer.cuda.to_cpu(a))
 
@@ -303,10 +303,10 @@ def main():
                         labels.append(chainer.cuda.to_cpu(l))
                         alignments.append(chainer.cuda.to_cpu(a))
                 elif model_type in ['label', 'pretrain']:
-                    for o, l, a in zip(output, label, align):
+                    for l in label:
                         labels.append(chainer.cuda.to_cpu(l))
                 else:
-                    for o, l, a in zip(output, label, align):
+                    for o, a in zip(output, align):
                         outputs.append(trg_vocab.id2word(chainer.cuda.to_cpu(o)))
                         alignments.append(chainer.cuda.to_cpu(a))
 
