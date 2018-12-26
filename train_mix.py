@@ -19,7 +19,7 @@ import chainer
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('config_file')
-    parser.add_argument('--batch', '-b', type=int, default=20)
+    parser.add_argument('--batch', '-b', type=int, default=30)
     parser.add_argument('--epoch', '-e', type=int, default=10)
     parser.add_argument('--gpu', '-g', type=int, default=-1)
     parser.add_argument('--model', '-m', choices=['multi'], default='multi')

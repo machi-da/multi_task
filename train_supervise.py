@@ -19,9 +19,9 @@ import chainer
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('config_file')
-    parser.add_argument('--batch', '-b', type=int, default=32)
+    parser.add_argument('--batch', '-b', type=int, default=30)
     parser.add_argument('--epoch', '-e', type=int, default=10)
-    parser.add_argument('--pretrain_epoch', '-pe', type=int, default=5)
+    parser.add_argument('--pretrain_epoch', '-pe', type=int, default=10)
     parser.add_argument('--gpu', '-g', type=int, default=-1)
     parser.add_argument('--model', '-m', choices=['multi', 'label', 'encdec', 'pretrain'], default='multi')
     parser.add_argument('--vocab', '-v', choices=['normal', 'subword'], default='normal')
@@ -120,7 +120,7 @@ def main():
         c_index_train, c_index_dev, c_index_test = gridsearch.split_train_dev_test(correct_index, index)
 
         """VOCABULARY"""
-        src_vocab, trg_vocab, sos, eos = dataset.prepare_vocab(model_dir, vocab_type, train_src_file, train_trg_file, vocab_size, gpu_id)
+        src_vocab, trg_vocab, sos, eos = dataset.prepare_vocab(model_valid_dir, vocab_type, src_train, trg_train, vocab_size, gpu_id)
         src_vocab_size = len(src_vocab.vocab)
         trg_vocab_size = len(trg_vocab.vocab)
 
