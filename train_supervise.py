@@ -106,7 +106,6 @@ def main():
     evaluater = evaluate.Evaluate()
 
     cross_valid_result = []
-    s_result_total = []
     for ite in range(1, valid_num + 1):
         model_valid_dir = model_dir + 'valid{}/'.format(ite)
         if not os.path.exists(model_valid_dir):
@@ -196,7 +195,6 @@ def main():
 
         """TRAIN"""
         accuracy_dic = {}
-        s_result_dic = {}
         for epoch in range(1, n_epoch + 1):
             train_loss = 0
             for i, batch in enumerate(train_iter.generate(), start=1):
@@ -268,26 +266,31 @@ def main():
             else:
                 s_rate, s_count, _, _, s_result = evaluater.eval_param(alignments, [], c_label_test, c_index_test, init, mix)
             test_score = round(s_rate[-1], 3)
-            s_result_dic[epoch] = s_result
             logger.info('V{} ## E{} ## loss:{}, dev: {}, test: {}'.format(ite, epoch, train_loss, dev_score, test_score))
 
             dataset.save_output(model_valid_dir, epoch, labels, alignments, outputs, s_result)
-            accuracy_dic[epoch] = [dev_score, test_score]
+            accuracy_dic[epoch] = [epoch, dev_score, test_score, param, s_rate, s_result]
 
         """MODEL SAVE"""
         best_epoch = max(accuracy_dic, key=(lambda x: accuracy_dic[x][0]))
-        s_result_total.extend(s_result_dic[best_epoch])
-        cross_valid_result.append([ite, best_epoch, accuracy_dic[best_epoch][1]])
-        logger.info('V{} ## best_epoch:{}, dev:{}, test:{}'.format(ite, best_epoch, accuracy_dic[best_epoch][0], accuracy_dic[best_epoch][1]))
+        cross_valid_result.append(accuracy_dic[best_epoch])
+        logger.info('V{} ## best_epoch:{}, dev:{}, test:{}'.format(ite, best_epoch, accuracy_dic[best_epoch][1], accuracy_dic[best_epoch][2]))
         shutil.copyfile(model_valid_dir + 'model_epoch_{}.npz'.format(best_epoch), model_valid_dir + 'best_model.npz')
 
         logger.info('')
 
-    average_score = [0 for _ in range(len(cross_valid_result[0]))]
-    for r in cross_valid_result:
-        average_score = [average_score[i] + r[2][i] for i in range(len(average_score))]
-        logger.info('\t{}: epoch{}, {}'.format(r[0], r[1], ' '.join(dataset.float_to_str(r[2]))))
-    average_score = [average_score[i] / len(cross_valid_result) for i in range(len(average_score))]
+    average_score = [0 for _ in range(len(cross_valid_result[0][4]))]
+    s_result_total = []
+    for i, r in enumerate(cross_valid_result, start=1):
+        epoch = r[0]
+        param = r[3]
+        test_score_list = [round(rr, 3) for rr in r[4]]
+        s_result = r[5]
+
+        average_score = [average_score[i] + test_score_list[i] for i in range(len(average_score))]
+        logger.info('   {}: epoch{}, {}\t{}'.format(i, epoch, param, ' '.join(dataset.float_to_str(test_score_list))))
+        s_result_total.extend(s_result)
+    average_score = [round(average_score[i] / len(cross_valid_result), 3) for i in range(len(average_score))]
     logger.info('ave: {}'.format(' '.join(dataset.float_to_str(average_score))))
 
     with open(model_dir + 's_res.txt', 'w')as f:
