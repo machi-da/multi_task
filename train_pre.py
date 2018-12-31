@@ -326,19 +326,23 @@ def main():
 
         logger.info('')
 
-    average_score = [0 for _ in range(len(cross_valid_result[0][4]))]
+    average_dev_score = 0
+    average_test_score = [0 for _ in range(len(cross_valid_result[0][4]))]
     s_result_total = []
     for i, r in enumerate(cross_valid_result, start=1):
         epoch = r[0]
+        dev_score = r[1]
         param = r[3]
         test_score_list = [round(rr, 3) for rr in r[4]]
         s_result = r[5]
 
-        average_score = [average_score[i] + test_score_list[i] for i in range(len(average_score))]
+        average_dev_score += dev_score
+        average_test_score = [average_test_score[i] + test_score_list[i] for i in range(len(average_test_score))]
         logger.info('   {}: epoch{}, {}\t{}'.format(i, epoch, param, ' '.join(dataset.float_to_str(test_score_list))))
         s_result_total.extend(s_result)
-    average_score = [round(average_score[i] / len(cross_valid_result), 3) for i in range(len(average_score))]
-    logger.info('ave: {}'.format(' '.join(dataset.float_to_str(average_score))))
+    average_dev_score /= round(average_dev_score / len(cross_valid_result), 3)
+    average_score = [round(average_test_score[i] / len(cross_valid_result), 3) for i in range(len(average_test_score))]
+    logger.info('dev: {}, test: {}'.format(average_dev_score, ' '.join(dataset.float_to_str(average_score))))
 
     with open(model_dir + 's_res.txt', 'w')as f:
         [f.write('{}\n'.format(l[1])) for l in sorted(s_result_total, key=lambda x: x[0])]
