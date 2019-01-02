@@ -278,9 +278,9 @@ def main():
         average_test_score = [average_test_score[i] + test_score_list[i] for i in range(len(average_test_score))]
         logger.info('   {}: epoch{}, {}\t{}'.format(i, epoch, param, ' '.join(dataset.float_to_str(test_score_list))))
         s_result_total.extend(s_result)
-    average_dev_score /= round(average_dev_score / len(cross_valid_result), 3)
-    average_score = [round(average_test_score[i] / len(cross_valid_result), 3) for i in range(len(average_test_score))]
-    logger.info('dev: {}, test: {}'.format(average_dev_score, ' '.join(dataset.float_to_str(average_score))))
+    average_dev_score = round(average_dev_score / len(cross_valid_result), 3)
+    average_test_score = [round(average_test_score[i] / len(cross_valid_result), 3) for i in range(len(average_test_score))]
+    logger.info('dev: {}, test: {}'.format(average_dev_score, ' '.join(dataset.float_to_str(average_test_score))))
 
     with open(model_dir + 's_res.txt', 'w')as f:
         [f.write('{}\n'.format(l[1])) for l in sorted(s_result_total, key=lambda x: x[0])]
