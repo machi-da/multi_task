@@ -1,14 +1,16 @@
 """
-separateモデル用
+separate learningモデル用
 labelとencdecを組み合わせてスコアを出す
 """
 import argparse
+import configparser
 import re
 import os
 import glob
 from collections import OrderedDict
 from tqdm import tqdm
 
+import dataset
 import evaluate
 import gridsearch
 
@@ -17,43 +19,15 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('label_model')
     parser.add_argument('encdec_model')
-    parser.add_argument('--valid_num', '-v', type=int, default=5)
+    parser.add_argument('--valid', '-v', action='store_true')
     args = parser.parse_args()
     return args
 
 
-def merge(output_dir, model_dir1, model_dir2, correct_label, correct_index, valid_num):
-    result_dic = OrderedDict()
-    model_file_num = len(glob.glob(os.path.join(model_dir1, 'model_epoch_*.npz')))
-
-    for i in tqdm(range(1, model_file_num + 1)):
-        for j in range(1, model_file_num + 1):
-            label, _, _, _ = evaluate.load_score_file(model_dir1 + 'model_epoch_{}'.format(i), model_dir1)
-            _, align, _, _ = evaluate.load_score_file(model_dir2 + 'model_epoch_{}'.format(j), model_dir2)
-            model = 'label{}_encdec{}'.format(i, j)
-
-            try:
-                s_total, s_result = gridsearch.main(label, align, correct_label, correct_index, valid_num, align_only=False, print_flag=False)
-                result_dic[model] = s_total
-                with open(output_dir + model + '.s_res.csv', 'w')as f:
-                    [f.write('{}\t{}\n'.format(l[0], l[1])) for l in sorted(s_result, key=lambda x: x[0])]
-            except KeyError:
-                result_dic[model] = 0
-            except ValueError:
-                result_dic[model] = -1
-
-    with open(output_dir + 'merge_result.txt', 'w')as f:
-        [f.write('{} {}\t{}\n'.format(i, k, v)) for i, (k, v) in enumerate(result_dic.items(), start=1)]
-        best_comb = max(result_dic, key=(lambda x: result_dic[x]))
-        f.write('[Best comb]\n')
-        f.write('{}\t{}\n'.format(best_comb, result_dic[best_comb]))
-    return result_dic[best_comb]
-
-
 def main():
     """
-    model1: label valid1~5
-    model2: encdec valid1~5 を指定する
+    model1: label
+    model2: encdec を指定する
     """
     args = parse_args()
     model_name1 = args.label_model
@@ -62,93 +36,94 @@ def main():
     model_name2 = args.encdec_model
     model_dir2 = re.search(r'^(.*/)', model_name2).group(1)
 
-    valid_num = args.valid_num
+    valid = args.valid
 
-    valid_file_num = len(glob.glob(os.path.join(model_dir1, 'valid*/')))
-    if valid_file_num:
-        _, _, correct_label, correct_index = evaluate.load_score_file('', model_dir1)
-        slice_size = len(correct_label) // 5
-        correct_label, correct_index = gridsearch.shuffle_list(correct_label, correct_index)
-        correct_label = gridsearch.slice_list(correct_label, slice_size)
-        correct_index = gridsearch.slice_list(correct_index, slice_size)
+    # 結果保存用ディレクトリ作成
+    output_dir = model_dir1 + model_dir2
+    if not os.path.exists(output_dir):
+        os.mkdir(output_dir)
 
-        for i in range(1, valid_file_num + 1):
-            m1 = model_dir1 + 'valid{}/'.format(i)
-            m2 = model_dir2 + 'valid{}/'.format(i)
-            output_dir = m1 + model_dir2
-            if not os.path.exists(output_dir):
-                os.mkdir(output_dir)
-            merge(output_dir, m1, m2, correct_label[i-1], correct_index[i-1], valid_num)
+    valid_index = [5, 1, 2, 3, 4]
+    valid_num = len(valid_index)
+    gridsearcher = gridsearch.GridSearch(valid_num)
+
+    # 評価データ準備
+    config = configparser.ConfigParser()
+    config_files = glob.glob(os.path.join(model_dir1, '*.ini'))
+    config.read(config_files[0])
+    test_src_file = config['server']['single_src_file']
+    correct_label, _, _, correct_index = dataset.load_binary_score_file(test_src_file)
+    correct_label, correct_index = gridsearch.shuffle_list(correct_label, correct_index)
+
+    accuracy_dic = OrderedDict()
+    # validファイルに分割されている時
+    if valid:
+        model_file_num = len(glob.glob(os.path.join(model_dir1, 'valid1/model_epoch_*.npz')))
+
+        label_dic = {}
+        align_dic = {}
+        # 初期化
+        for i in range(1, model_file_num + 1):
+            label_dic[i] = []
+            align_dic[i] = []
+
+        # validに分割されたファイルをモデルごとに統合
+        for i in valid_index:
+            for j in range(1, model_file_num + 1):
+                label, _ = evaluate.load_score_file(model_dir1 + 'valid{}/model_epoch_{}'.format(i, j))
+                _, align = evaluate.load_score_file(model_dir2 + 'valid{}/model_epoch_{}'.format(i, j))
+
+                label_dic[j].extend(label)
+                align_dic[j].extend(align)
+
+        # データをソート
+        for i in range(1, model_file_num + 1):
+            zip_list = list(zip(correct_index, label_dic[i], align_dic[i]))
+            zip_list.sort()
+            _, l, a = zip(*zip_list)
+            label_dic[i] = list(l)
+            align_dic[i] = list(a)
+
+        # スコアの計算
+        for i in tqdm(range(1, model_file_num + 1)):
+            for j in range(1, model_file_num + 1):
+                dev_score, test_score, param_list, test_score_list, s_result_list = gridsearcher.gridsearch(correct_label, correct_index, label_dic[i], align_dic[j])
+                key = 'label{}_enc{}'.format(i, j)
+                accuracy_dic[key] = [dev_score, test_score]
+
+                with open(output_dir + key + '.s_res.txt', 'w')as f:
+                    [f.write('{}\n'.format(l[1])) for l in sorted(s_result_list, key=lambda x: x[0])]
+
+            with open(output_dir + 'model_epoch_{}.label'.format(i), 'w')as f:
+                [f.write('{}\n'.format(l)) for l in label_dic[i]]
+            with open(output_dir + 'model_epoch_{}.align'.format(i), 'w')as f:
+                [f.write('{}\n'.format(a)) for a in align_dic[i]]
+            break
+
+        best_score = max(accuracy_dic, key=lambda x: accuracy_dic[x][0])
+        with open(output_dir + 'merge.txt', 'w')as f:
+            [f.write('{} {}\n'.format(k, v)) for k, v in accuracy_dic.items()]
+            f.write('best score: {}\t{}\n'.format(best_score, accuracy_dic[best_score]))
 
     else:
-        label, _, correct_label, correct_index = evaluate.load_score_file(model_dir1, model_name1)
-        _, align, _, _ = evaluate.load_score_file(model_dir2, model_name2)
-        output_dir = model_name1 + model_dir2
-        if not os.path.exists(output_dir):
-            os.mkdir(output_dir)
-        merge(output_dir, model_dir1, model_dir2, correct_label, correct_index, valid_num)
+        model_file_num = len(glob.glob(os.path.join(model_dir1, 'model_epoch_*.npz')))
+        for i in tqdm(range(1, model_file_num + 1)):
+            label, _ = evaluate.load_score_file(model_dir1 + 'model_epoch_{}'.format(i))
+            for j in range(1, model_file_num + 1):
+                _, align = evaluate.load_score_file(model_dir2 + 'model_epoch_{}'.format(j))
 
+                dev_score, test_score, param_list, test_score_list, s_result_list = gridsearcher.gridsearch(correct_label, correct_index, label, align)
+                key = 'label{}_enc{}'.format(i, j)
+                accuracy_dic[key] = [dev_score, test_score]
+                with open(output_dir + key + '.s_res.txt', 'w')as f:
+                    [f.write('{}\n'.format(l[1])) for l in sorted(s_result_list, key=lambda x: x[0])]
+            break
 
-def main2():
-    """
-    model1: super_label valid1~5
-    model2: encdec1180を指定する
-    """
-    args = parse_args()
-
-    model_name1 = args.label_model
-    model_dir1 = re.search(r'^(.*/)', model_name1).group(1)
-
-    model_name2 = args.encdec_model
-    model_dir2 = re.search(r'^(.*/)', model_name2).group(1)
-    model2_vocab = model_dir2.split('_')[1]
-    print(model2_vocab)
-    v_size = re.search(r'(\d+)', model2_vocab).group(1)
-    valid_num = args.valid_num
-
-    valid_file_num = len(glob.glob(os.path.join(model_dir1, 'valid*/')))
-
-    _, _, correct_label, correct_index = evaluate.load_score_file('', model_dir1)
-    slice_size = len(correct_label) // 5
-    correct_label, correct_index = gridsearch.shuffle_list(correct_label, correct_index)
-    correct_label = gridsearch.slice_list(correct_label, slice_size)
-    correct_index = gridsearch.slice_list(correct_index, slice_size)
-
-    for i in range(1, valid_file_num + 1):
-        m1 = model_dir1 + 'valid{}/'.format(i)
-        output_dir = m1 + 'encdec{}/'.format(v_size)
-        if not os.path.exists(output_dir):
-            os.mkdir(output_dir)
-        result_dic = OrderedDict()
-        model_file_num = len(glob.glob(os.path.join(m1, 'model_epoch_*.npz')))
-
-        for j in tqdm(range(1, model_file_num + 1)):
-            label, _, _, _ = evaluate.load_score_file(m1 + 'model_epoch_{}'.format(j), model_dir1)
-            for k in range(1, model_file_num + 1):
-                _, align, _, _ = evaluate.load_score_file(model_dir2 + 'single_model_epoch_{}'.format(k), model_dir2)
-                a, = gridsearch.shuffle_list(align)
-                a = gridsearch.slice_list(a, slice_size)
-                model = 'label{}_encdec{}'.format(j, k)
-
-                try:
-                    index = i
-                    if index == 5:
-                        index = 0
-                    s_total, s_result = gridsearch.main(label, a[index], correct_label[index], correct_index[index], valid_num, align_only=False, print_flag=False)
-                    result_dic[model] = s_total
-                    with open(output_dir + model + '.s_res.csv', 'w')as f:
-                        [f.write('{}\t{}\n'.format(l[0], l[1])) for l in sorted(s_result, key=lambda x: x[0])]
-                except KeyError:
-                    result_dic[model] = 0
-                except ValueError:
-                    result_dic[model] = -1
-
-            with open(output_dir + 'merge_result.txt', 'w')as f:
-                [f.write('{} {}\t{}\n'.format(i, k, v)) for i, (k, v) in enumerate(result_dic.items(), start=1)]
-                best_comb = max(result_dic, key=(lambda x: result_dic[x]))
-                f.write('[Best comb]\n')
-                f.write('{}\t{}\n'.format(best_comb, result_dic[best_comb]))
+        best_score = max(accuracy_dic, key=lambda x: accuracy_dic[x][0])
+        with open(output_dir + 'merge.txt', 'w')as f:
+            [f.write('{} {}\n'.format(k, v)) for k, v in accuracy_dic.items()]
+            f.write('best score: {}\t{}\n'.format(best_score, accuracy_dic[best_score]))
 
 
 if __name__ == '__main__':
-    main2()
+    main()

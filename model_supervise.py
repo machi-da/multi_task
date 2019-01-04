@@ -183,7 +183,7 @@ class Multi(chainer.Chain):
 
         return sent_hy, sent_cy, sent_vectors
 
-    def predict(self, sources, sos, eos, limit=50):
+    def predict(self, sources, sos, eos, weight=1.0, limit=50):
         hs, cs, enc_ys = self.encode(sources)
         label_proj = self.labelClassifier(enc_ys, hs)
 
@@ -276,7 +276,7 @@ class Label(chainer.Chain):
 
         return sent_hy, sent_cy, sent_vectors
 
-    def predict(self, sources, sos, eos, limit=50):
+    def predict(self, sources, sos, eos, weight=1.0, limit=50):
         hs, cs, enc_ys = self.encode(sources)
         label_proj = self.labelClassifier(enc_ys, hs)
 

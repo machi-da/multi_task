@@ -257,7 +257,7 @@ def main():
             accuracy_dic[epoch] = [epoch, dev_score, test_score, param, s_rate, s_result]
 
         """MODEL SAVE"""
-        best_epoch = max(accuracy_dic, key=(lambda x: accuracy_dic[x][0]))
+        best_epoch = max(accuracy_dic, key=(lambda x: accuracy_dic[x][1]))
         cross_valid_result.append(accuracy_dic[best_epoch])
         logger.info('V{} ## best_epoch:{}, dev:{}, test:{}'.format(ite, best_epoch, accuracy_dic[best_epoch][1], accuracy_dic[best_epoch][2]))
         shutil.copyfile(model_valid_dir + 'model_epoch_{}.npz'.format(best_epoch), model_valid_dir + 'best_model.npz')

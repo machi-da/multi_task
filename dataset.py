@@ -118,11 +118,11 @@ def save_output(save_dir, epoch, label_data, align_data, hypo_data, s_result_lis
         with open(save_dir + 'model_epoch_{}.label'.format(epoch), 'w')as f:
             [f.write('{}\n'.format(l)) for l in label_data]
     if align_data:
-        with open(save_dir + 'model_epoch_{}.hypo'.format(epoch), 'w')as f:
-            [f.write(h + '\n') for h in hypo_data]
-    if hypo_data:
         with open(save_dir + 'model_epoch_{}.align'.format(epoch), 'w')as f:
-            [f.write('{}\n'.format(a)) for a in align_data]
+            [f.write(a + '\n') for a in align_data]
+    if hypo_data:
+        with open(save_dir + 'model_epoch_{}.hypo'.format(epoch), 'w')as f:
+            [f.write('{}\n'.format(h)) for h in hypo_data]
     with open(save_dir + 'model_epoch_{}.s_res.txt'.format(epoch), 'w')as f:
         [f.write('{}\n'.format(l[1])) for l in sorted(s_result_list, key=lambda x: x[0])]
     return
