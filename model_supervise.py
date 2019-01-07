@@ -183,7 +183,7 @@ class Multi(chainer.Chain):
 
         return sent_hy, sent_cy, sent_vectors
 
-    def predict(self, sources, sos, eos, weight=1.0, limit=50):
+    def predict(self, sources, sos, eos, limit=50):
         hs, cs, enc_ys = self.encode(sources)
         label_proj = self.labelClassifier(enc_ys, hs)
 
@@ -209,13 +209,15 @@ class Multi(chainer.Chain):
                 word = self.xp.argmax(word_ys[0].data, axis=1)
                 word = word.astype(self.xp.int32)
                 pre_word = word
+
+                sentence.append(word)
+                attn_score.append(alignment[0][0])
+
                 if word == eos:
                     # attn_score = attn_score[0]  # 先頭の1語のみのattentionを取得する場合
                     attn_score = self.xp.sum(self.xp.array(attn_score, dtype=self.xp.float32), axis=0) / i
                     break
-                attn_score.append(alignment[0][0])
-                sentence.append(word)
-            else:
+            else:  # 50語でデコードが終わらなかったとき
                 # attn_score = attn_score[0]  # 先頭の1語のみのattentionを取得する場合
                 attn_score = self.xp.sum(self.xp.array(attn_score, dtype=self.xp.float32), axis=0) / i
             sentences.append(self.xp.hstack(sentence[1:]))
@@ -276,7 +278,7 @@ class Label(chainer.Chain):
 
         return sent_hy, sent_cy, sent_vectors
 
-    def predict(self, sources, sos, eos, weight=1.0, limit=50):
+    def predict(self, sources, sos, eos, limit=50):
         hs, cs, enc_ys = self.encode(sources)
         label_proj = self.labelClassifier(enc_ys, hs)
 
@@ -353,13 +355,15 @@ class EncoderDecoder(chainer.Chain):
                 word = self.xp.argmax(word_ys[0].data, axis=1)
                 word = word.astype(self.xp.int32)
                 pre_word = word
+
+                sentence.append(word)
+                attn_score.append(alignment[0][0])
+
                 if word == eos:
                     # attn_score = attn_score[0]  # 先頭の1語のみのattentionを取得する場合
                     attn_score = self.xp.sum(self.xp.array(attn_score, dtype=self.xp.float32), axis=0) / i
                     break
-                attn_score.append(alignment[0][0])
-                sentence.append(word)
-            else:
+            else:  # 50語でデコードが終わらなかったとき
                 # attn_score = attn_score[0]  # 先頭の1語のみのattentionを取得する場合
                 attn_score = self.xp.sum(self.xp.array(attn_score, dtype=self.xp.float32), axis=0) / i
             sentences.append(self.xp.hstack(sentence[1:]))

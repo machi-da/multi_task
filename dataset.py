@@ -119,7 +119,7 @@ def save_output(save_dir, epoch, label_data, align_data, hypo_data, s_result_lis
             [f.write('{}\n'.format(l)) for l in label_data]
     if align_data:
         with open(save_dir + 'model_epoch_{}.align'.format(epoch), 'w')as f:
-            [f.write(a + '\n') for a in align_data]
+            [f.write('{}\n'.format(a)) for a in align_data]
     if hypo_data:
         with open(save_dir + 'model_epoch_{}.hypo'.format(epoch), 'w')as f:
             [f.write('{}\n'.format(h)) for h in hypo_data]

@@ -215,7 +215,7 @@ def main():
                     #     f.write('V{} ## E{} ## dev iter: {}\n'.format(ite, epoch, i))
                     #     f.write(traceback.format_exc())
                     #     f.write('V{} ## E{} ## [batch detail]'.format(ite, epoch))
-                    #     for b in batch[0][0]:
+                    #     for b in batch[0]:
                     #         [f.write(src_vocab.id2word(chainer.cuda.to_cpu(bb)) + '\n') for bb in b]
 
                 for l, a in zip(label, align):
