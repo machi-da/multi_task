@@ -342,18 +342,25 @@ class Iterator:
 
 
 class MixIterator:
-    def __init__(self, iterator1, iterator2, shuffle=True, multiple=1):
-        weight = 1
+    def __init__(self, iterator1, iterator2, shuffle=True, type='over', multiple=1):
         # iterator1を大きいデータサイズのiteratorに指定する
-        if iterator1.size // iterator2.size != 0:
-            weight = 1 / (iterator1.size // iterator2.size)
-
         self.batches = []
-        for batch in iterator1.batches:
-            self.batches.append([batch, weight])
-        for i in range(multiple):
-            for batch in iterator2.batches:
-                self.batches.append([batch, 1.0])
+
+        if type == 'over':
+            for batch in iterator1.batches:
+                self.batches.append([batch, False])
+            for i in range(multiple):
+                for batch in iterator2.batches:
+                    self.batches.append([batch, True])
+
+        elif type == 'under':
+            random.seed(0)
+            ite = random.sample(iterator1.batches, iterator2.size * multiple)
+            for batch in ite:
+                self.batches.append([batch, False])
+            for i in range(multiple):
+                for batch in iterator2.batches:
+                    self.batches.append([batch, True])
 
         self.shuffle = shuffle
 

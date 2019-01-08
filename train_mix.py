@@ -26,7 +26,6 @@ def parse_args():
     parser.add_argument('--vocab', '-v', choices=['normal', 'subword'], default='normal')
     parser.add_argument('--pretrain_w2v', '-p', action='store_true')
     parser.add_argument('--data_path', '-d', choices=['local', 'server', 'test'], default='server')
-    parser.add_argument('--multiple', type=int, default=1)
     args = parser.parse_args()
     return args
 
@@ -43,21 +42,22 @@ def main():
     vocab_type = args.vocab
     pretrain_w2v = args.pretrain_w2v
     data_path = args.data_path
-    multiple= args.multiple
 
     """DIR PREPARE"""
     config.read(config_file)
     vocab_size = int(config['Parameter']['vocab_size'])
     coefficient = float(config['Parameter']['coefficient'])
+    sample_type = config['Parameter']['sample_type']
+    multiple = int(config['Parameter']['multiple'])
 
     vocab_name = vocab_type
     if pretrain_w2v:
         vocab_name = 'p' + vocab_name
 
     if multiple == 1:
-        model_dir = './mix_{}_{}{}_{}_c{}/'.format(model_type, vocab_name, vocab_size, data_path[0], coefficient)
+        model_dir = './mix_{}_{}{}_{}_c{}_{}/'.format(model_type, vocab_name, vocab_size, data_path[0], coefficient, sample_type)
     else:
-        model_dir = './mix_{}_{}{}_{}_c{}_m{}/'.format(model_type, vocab_name, vocab_size, data_path[0], coefficient, multiple)
+        model_dir = './mix_{}_{}{}_{}_c{}_{}{}/'.format(model_type, vocab_name, vocab_size, data_path[0], coefficient, sample_type, multiple)
 
     if not os.path.exists(model_dir):
         os.mkdir(model_dir)
@@ -74,6 +74,8 @@ def main():
     gradclip = float(config['Parameter']['gradclip'])
     vocab_size = int(config['Parameter']['vocab_size'])
     valid_num = int(config['Parameter']['valid_num'])
+    sample_type = config['Parameter']['sample_type']
+    multiple = int(config['Parameter']['multiple'])
 
     """LOGGER"""
     log_file = model_dir + 'log.txt'
@@ -163,8 +165,14 @@ def main():
         dev_iter = dataset.Iterator(src_dev, label_dev, trg_dev, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
         test_iter = dataset.Iterator(src_test, label_test, trg_test, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
 
-        logger.info('V{} ## QA: {}, train: {}, dev: {},test: {}'.format(ite, len(qa_label_train), len(label_train), len(label_dev), len(label_test)))
-        mix_train_iter = dataset.MixIterator(qa_iter, train_iter, shuffle=False, multiple=multiple)
+        mix_train_iter = dataset.MixIterator(qa_iter, train_iter, shuffle=False, type=sample_type, multiple=multiple)
+        if sample_type == 'over':
+            qa_size = len(qa_label_train)
+            label_size = len(label_train) * multiple
+        elif sample_type == 'under':
+            qa_size = len(label_train) * multiple
+            label_size = len(label_train)
+        logger.info('V{} ## QA: {}, train: {}, dev: {} ,test: {}'.format(ite, qa_size, label_size, len(label_dev), len(label_test)))
 
         """MODEL"""
         model = model_supervise.Multi(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, coefficient, src_initialW, trg_initialW)
@@ -183,10 +191,10 @@ def main():
             train_loss = 0
             for i, batch in enumerate(mix_train_iter.generate(), start=1):
                 try:
-                    if batch[1] == 1.0:
+                    if batch[1]:
                         loss = optimizer.target(*batch[0])
                     else:
-                        loss = model.pretrain(*batch[0], batch[1])
+                        loss = model.pretrain(*batch[0])
                     train_loss += loss.data
                     optimizer.target.cleargrads()
                     loss.backward()
