@@ -26,6 +26,7 @@ def parse_args():
     parser.add_argument('--vocab', '-v', choices=['normal', 'subword'], default='normal')
     parser.add_argument('--pretrain_w2v', '-p', action='store_true')
     parser.add_argument('--data_path', '-d', choices=['local', 'server'], default='server')
+    parser.add_argument('--load_model', '-l', type=str, default='p_best_model.npz')
     args = parser.parse_args()
     return args
 
@@ -43,6 +44,7 @@ def main():
     vocab_type = args.vocab
     pretrain_w2v = args.pretrain_w2v
     data_path = args.data_path
+    load_model = args.load_model
 
     """DIR PREPARE"""
     config.read(config_file)
@@ -148,7 +150,7 @@ def main():
         model.to_gpu()
 
     """PRETRAIN"""
-    if model_type == 'pretrain':
+    if model_type == 'pretrain' and not load_model:
         logger.info('Pre-train start')
         pretrain_loss_dic = {}
         for epoch in range(1, pretrain_epoch + 1):
@@ -184,6 +186,10 @@ def main():
         logger.info('best_epoch:{}, val loss: {}'.format(best_epoch, pretrain_loss_dic[best_epoch]))
         shutil.copyfile(model_dir + 'p_model_epoch_{}.npz'.format(best_epoch), model_dir + 'p_best_model.npz')
         logger.info('Pre-train finish')
+
+    if load_model:
+        logger.info('load model: {}'.format(load_model))
+        chainer.serializers.load_npz(model_dir + load_model, model)
 
     """TRAIN"""
     accuracy_dic = {}

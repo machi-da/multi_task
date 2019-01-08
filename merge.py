@@ -89,7 +89,7 @@ def main():
             for j in range(1, model_file_num + 1):
                 dev_score, test_score, param_list, test_score_list, s_result_list = gridsearcher.gridsearch(correct_label, correct_index, label_dic[i], align_dic[j])
                 key = 'label{}_enc{}'.format(i, j)
-                accuracy_dic[key] = [dev_score, test_score]
+                accuracy_dic[key] = [dev_score, test_score, param_list]
 
                 with open(output_dir + key + '.s_res.txt', 'w')as f:
                     [f.write('{}\n'.format(l[1])) for l in sorted(s_result_list, key=lambda x: x[0])]
@@ -98,7 +98,6 @@ def main():
                 [f.write('{}\n'.format(l)) for l in label_dic[i]]
             with open(output_dir + 'model_epoch_{}.align'.format(i), 'w')as f:
                 [f.write('{}\n'.format(a)) for a in align_dic[i]]
-            break
 
         best_score = max(accuracy_dic, key=lambda x: accuracy_dic[x][0])
         with open(output_dir + 'merge.txt', 'w')as f:
@@ -114,10 +113,9 @@ def main():
 
                 dev_score, test_score, param_list, test_score_list, s_result_list = gridsearcher.gridsearch(correct_label, correct_index, label, align)
                 key = 'label{}_enc{}'.format(i, j)
-                accuracy_dic[key] = [dev_score, test_score]
+                accuracy_dic[key] = [dev_score, test_score, param_list]
                 with open(output_dir + key + '.s_res.txt', 'w')as f:
                     [f.write('{}\n'.format(l[1])) for l in sorted(s_result_list, key=lambda x: x[0])]
-            break
 
         best_score = max(accuracy_dic, key=lambda x: accuracy_dic[x][0])
         with open(output_dir + 'merge.txt', 'w')as f:
