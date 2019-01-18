@@ -4,6 +4,7 @@ labelとencdecを組み合わせてスコアを出す
 """
 import argparse
 import configparser
+import sys
 import re
 import os
 import glob
@@ -106,6 +107,7 @@ def main():
 
     else:
         model_file_num = len(glob.glob(os.path.join(model_dir1, 'model_epoch_*.npz')))
+        model_file_num = 10
         for i in tqdm(range(1, model_file_num + 1)):
             label, _ = evaluate.load_score_file(model_dir1 + 'model_epoch_{}'.format(i))
             for j in range(1, model_file_num + 1):
@@ -123,5 +125,55 @@ def main():
             f.write('best score: {}\t{}\n'.format(best_score, accuracy_dic[best_score]))
 
 
+def merge_valid_file():
+    args = sys.argv
+    model_dir = args[1]
+
+    valid_index = [5, 1, 2, 3, 4]
+    model_file_num = len(glob.glob(os.path.join(model_dir, 'valid1/model_epoch_*.npz')))
+
+    config = configparser.ConfigParser()
+    config_files = glob.glob(os.path.join(model_dir, '*.ini'))
+    config.read(config_files[0])
+    test_src_file = config['server']['single_src_file']
+    correct_label, _, _, correct_index = dataset.load_binary_score_file(test_src_file)
+    correct_label, correct_index = gridsearch.shuffle_list(correct_label, correct_index)
+
+    label_dic = {}
+    align_dic = {}
+
+    # 初期化
+    for i in range(1, model_file_num + 1):
+        label_dic[i] = []
+        align_dic[i] = []
+
+    # validに分割されたファイルをモデルごとに統合
+    for i in valid_index:
+        for j in range(1, model_file_num + 1):
+            label, _ = evaluate.load_score_file(model_dir + 'valid{}/model_epoch_{}'.format(i, j))
+            _, align = evaluate.load_score_file(model_dir + 'valid{}/model_epoch_{}'.format(i, j))
+
+            label_dic[j].extend(label)
+            align_dic[j].extend(align)
+
+    # データをソート
+    for i in range(1, model_file_num + 1):
+        # zip_list = list(zip(correct_index, label_dic[i], align_dic[i]))
+        zip_list = list(zip(correct_index, label_dic[i]))
+        zip_list.sort()
+        # _, l, a = zip(*zip_list)
+        _, l = zip(*zip_list)
+        label_dic[i] = list(l)
+        # align_dic[i] = list(a)
+
+    # 書き出し
+    for i in range(1, model_file_num + 1):
+        with open(model_dir + 'model_epoch_{}.label'.format(i), 'w')as f:
+            [f.write('{}\n'.format(l)) for l in label_dic[i]]
+        # with open(model_dir + 'model_epoch_{}.align'.format(i), 'w')as f:
+        #     [f.write('{}\n'.format(a)) for a in align_dic[i]]
+
+
 if __name__ == '__main__':
     main()
+    # merge_valid_file()

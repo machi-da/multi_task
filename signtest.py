@@ -4,7 +4,7 @@ import math
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    # parser.add_argument('baseline_score_file')
+    parser.add_argument('baseline_score_file')
     parser.add_argument('compared_score_file')
     parser.add_argument('--convert', '-c', action='store_true')
     args = parser.parse_args()
@@ -28,8 +28,8 @@ def main(baseline_score_file, compared_score_file):
     better = 0
     dic = {'baseline': 0, 'compared': 0, 'TT': 0, 'TF': 0, 'FT': 0, 'FF': 0}
     for b, c in zip(baseline, compared):
-        b = b.strip().split('\t')[1]
-        c = c.strip().split('\t')[1]
+        b = b.strip()
+        c = c.strip()
 
         if b == correct_symbol:
             dic['baseline'] += 1
@@ -52,7 +52,7 @@ def main(baseline_score_file, compared_score_file):
             if c == correct_symbol:
                 better += 1
 
-    print(dic)
+    print('baseline: {}, compared: {}, TT: {}, TF: {}, FT: {}, FF: {}'.format(dic['baseline'], dic['compared'], dic['TT'], dic['TF'], dic['FT'], dic['FF']))
     result_prob = comb(counter, better) * pow(binomial_prob, counter)
     result_95 = True if result_prob <= 0.05 else False
     print('prob: {}, 95%信頼区間: {}'.format(result_prob, result_95))
@@ -89,8 +89,8 @@ def convert_s_res(file_name):
 
 if __name__ == '__main__':
     args = parse_args()
-    # baseline_score_file = args.baseline_score_file
-    baseline_score_file = '/home/lr/machida/yahoo/evaluate/s_res.csv'
+    baseline_score_file = args.baseline_score_file
+    # baseline_score_file = '/home/lr/machida/yahoo/evaluate/s_res.csv'
     compared_score_file = args.compared_score_file
     convert = args.convert
 

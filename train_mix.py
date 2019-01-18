@@ -49,15 +49,22 @@ def main():
     coefficient = float(config['Parameter']['coefficient'])
     sample_type = config['Parameter']['sample_type']
     multiple = int(config['Parameter']['multiple'])
+    shuffle = bool(int(config['Parameter']['shuffle']))
 
     vocab_name = vocab_type
     if pretrain_w2v:
         vocab_name = 'p' + vocab_name
 
     if multiple == 1:
-        model_dir = './mix_{}_{}{}_{}_c{}_{}/'.format(model_type, vocab_name, vocab_size, data_path[0], coefficient, sample_type)
+        if shuffle:
+            model_dir = './mix_{}_{}{}_{}_c{}_{}_shuffle/'.format(model_type, vocab_name, vocab_size, data_path[0], coefficient, sample_type)
+        else:
+            model_dir = './mix_{}_{}{}_{}_c{}_{}/'.format(model_type, vocab_name, vocab_size, data_path[0], coefficient, sample_type)
     else:
-        model_dir = './mix_{}_{}{}_{}_c{}_{}{}/'.format(model_type, vocab_name, vocab_size, data_path[0], coefficient, sample_type, multiple)
+        if shuffle:
+            model_dir = './mix_{}_{}{}_{}_c{}_{}{}_shuffle/'.format(model_type, vocab_name, vocab_size, data_path[0], coefficient, sample_type, multiple)
+        else:
+            model_dir = './mix_{}_{}{}_{}_c{}_{}{}/'.format(model_type, vocab_name, vocab_size, data_path[0], coefficient, sample_type, multiple)
 
     if not os.path.exists(model_dir):
         os.mkdir(model_dir)
@@ -76,6 +83,7 @@ def main():
     valid_num = int(config['Parameter']['valid_num'])
     sample_type = config['Parameter']['sample_type']
     multiple = int(config['Parameter']['multiple'])
+    shuffle = bool(int(config['Parameter']['shuffle']))
 
     """LOGGER"""
     log_file = model_dir + 'log.txt'
@@ -165,7 +173,7 @@ def main():
         dev_iter = dataset.Iterator(src_dev, label_dev, trg_dev, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
         test_iter = dataset.Iterator(src_test, label_test, trg_test, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
 
-        mix_train_iter = dataset.MixIterator(qa_iter, train_iter, shuffle=False, type=sample_type, multiple=multiple)
+        mix_train_iter = dataset.MixIterator(qa_iter, train_iter, shuffle=shuffle, type=sample_type, multiple=multiple)
         if sample_type == 'over':
             qa_size = len(qa_label_train)
             label_size = len(label_train) * multiple

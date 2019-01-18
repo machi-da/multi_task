@@ -26,7 +26,7 @@ def parse_args():
     parser.add_argument('--vocab', '-v', choices=['normal', 'subword'], default='normal')
     parser.add_argument('--pretrain_w2v', '-p', action='store_true')
     parser.add_argument('--data_path', '-d', choices=['local', 'server'], default='server')
-    parser.add_argument('--load_model', '-l', type=str, default='p_best_model.npz')
+    parser.add_argument('--load_model', '-l', type=str)
     args = parser.parse_args()
     return args
 
@@ -56,15 +56,21 @@ def main():
         vocab_name = 'p' + vocab_name
 
     if model_type == 'multi':
-        model_dir = './{}_{}{}_{}_c{}/'.format(model_type, vocab_name, vocab_size, data_path[0], coefficient)
+        base_dir = './{}_{}{}_{}_c{}/'.format(model_type, vocab_name, vocab_size, data_path[0], coefficient)
     else:
-        model_dir = './{}_{}{}_{}/'.format(model_type, vocab_name, vocab_size, data_path[0])
+        base_dir = './{}_{}{}_{}/'.format(model_type, vocab_name, vocab_size, data_path[0])
+    model_save_dir = base_dir
 
-    if not os.path.exists(model_dir):
-        os.mkdir(model_dir)
-        shutil.copyfile(config_file, model_dir + config_file)
-    config_file = model_dir + config_file
+    if not os.path.exists(base_dir):
+        os.mkdir(base_dir)
+        shutil.copyfile(config_file, base_dir + config_file)
+    config_file = base_dir + config_file
     config.read(config_file)
+
+    if load_model is not None:
+        model_save_dir = base_dir + load_model.replace('.npz', '') + '/'
+        if not os.path.exists(model_save_dir):
+            os.mkdir(model_save_dir)
 
     """PARAMATER"""
     embed_size = int(config['Parameter']['embed_size'])
@@ -77,7 +83,7 @@ def main():
     coefficient = float(config['Parameter']['coefficient'])
     valid_num = int(config['Parameter']['valid_num'])
     """LOGGER"""
-    log_file = model_dir + 'log.txt'
+    log_file = model_save_dir + 'log.txt'
     logger = dataset.prepare_logger(log_file)
 
     logger.info(args)  # 引数を記録
@@ -98,7 +104,7 @@ def main():
     logger.info('train size: {}, valid size: {}'.format(train_data_size, valid_data_size))
 
     """VOCABULARY"""
-    src_vocab, trg_vocab, sos, eos = dataset.prepare_vocab(model_dir, vocab_type, train_src_file, train_trg_file, vocab_size, gpu_id)
+    src_vocab, trg_vocab, sos, eos = dataset.prepare_vocab(base_dir, vocab_type, train_src_file, train_trg_file, vocab_size, gpu_id)
     src_vocab_size = len(src_vocab.vocab)
     trg_vocab_size = len(trg_vocab.vocab)
 
@@ -150,7 +156,7 @@ def main():
         model.to_gpu()
 
     """PRETRAIN"""
-    if model_type == 'pretrain' and not load_model:
+    if model_type == 'pretrain' and load_model is None:
         logger.info('Pre-train start')
         pretrain_loss_dic = {}
         for epoch in range(1, pretrain_epoch + 1):
@@ -171,7 +177,7 @@ def main():
                     #     f.write('P{} ## [batch detail]\n'.format(epoch))
                     #     for b in batch[0]:
                     #         [f.write(src_vocab.id2word(chainer.cuda.to_cpu(bb)) + '\n') for bb in b]
-            chainer.serializers.save_npz(model_dir + 'p_model_epoch_{}.npz'.format(epoch), model)
+            chainer.serializers.save_npz(model_save_dir + 'p_model_epoch_{}.npz'.format(epoch), model)
 
             """EVALUATE"""
             valid_loss = 0
@@ -184,12 +190,12 @@ def main():
         """MODEL SAVE & LOAD"""
         best_epoch = min(pretrain_loss_dic, key=(lambda x: pretrain_loss_dic[x]))
         logger.info('best_epoch:{}, val loss: {}'.format(best_epoch, pretrain_loss_dic[best_epoch]))
-        shutil.copyfile(model_dir + 'p_model_epoch_{}.npz'.format(best_epoch), model_dir + 'p_best_model.npz')
+        shutil.copyfile(model_save_dir + 'p_model_epoch_{}.npz'.format(best_epoch), model_save_dir + 'p_best_model.npz')
         logger.info('Pre-train finish')
 
     if load_model:
         logger.info('load model: {}'.format(load_model))
-        chainer.serializers.load_npz(model_dir + load_model, model)
+        chainer.serializers.load_npz(model_save_dir + load_model, model)
 
     """TRAIN"""
     accuracy_dic = {}
@@ -211,7 +217,7 @@ def main():
                 #     f.write('E{} ## [batch detail]\n'.format(epoch))
                 #     for b in batch[0]:
                 #         [f.write(src_vocab.id2word(chainer.cuda.to_cpu(bb)) + '\n') for bb in b]
-        chainer.serializers.save_npz(model_dir + 'model_epoch_{}.npz'.format(epoch), model)
+        chainer.serializers.save_npz(model_save_dir + 'model_epoch_{}.npz'.format(epoch), model)
 
         """DEV & TEST"""
         outputs = []
@@ -257,12 +263,12 @@ def main():
             logger.info('E{} ##   {}: {}\t{}'.format(epoch, i, p, ' '.join(dataset.float_to_str(l))))
 
         # 結果保存
-        dataset.save_output(model_dir, epoch, labels, alignments, outputs, s_result_list)
+        dataset.save_output(model_save_dir, epoch, labels, alignments, outputs, s_result_list)
 
     """MODEL SAVE"""
     best_epoch = max(accuracy_dic, key=(lambda x: accuracy_dic[x][0]))
     logger.info('best_epoch:{}, dev: {}, test: {}, {}'.format(best_epoch, accuracy_dic[best_epoch][0], accuracy_dic[best_epoch][1], model_dir))
-    shutil.copyfile(model_dir + 'model_epoch_{}.npz'.format(best_epoch), model_dir + 'best_model.npz')
+    shutil.copyfile(model_save_dir + 'model_epoch_{}.npz'.format(best_epoch), model_save_dir + 'best_model.npz')
 
 
 if __name__ == '__main__':
