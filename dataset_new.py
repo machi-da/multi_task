@@ -130,65 +130,6 @@ def float_to_str(lit):
     return ' '.join([str(round(l, 3)) for l in lit])
 
 
-"""
-def split_train_dev_test(data, rate={'train_dev': 4, 'test': 1, 'valid': 5}, debug=False):
-    total = rate['train_dev'] + rate['test']
-
-    train_dev = []
-    test = []
-    class_data = defaultdict(list)
-
-    for d in data:
-        sent_num = d['sent_num'] if d['sent_num'] <= 7 else 7
-        class_data[sent_num].append(d)
-
-    for k, v in class_data.items():
-        group_size = int(len(v) / total)
-
-        start = 0
-        end = group_size * rate['train_dev']
-        train_dev.extend(v[start:end])
-
-        start = end
-        end = end + (group_size * rate['test'])
-        test.extend(v[start:end])
-
-        test.extend(v[end:])
-
-    if debug:
-        count = []
-        for d in train_dev:
-            count.append(d['sent_num'])
-        print('train_dev:', Counter(count))
-        count = []
-        for d in test:
-            count.append(d['sent_num'])
-        print('test:', Counter(count))
-
-    np.random.seed(1)
-    np.random.shuffle(train_dev)
-    slice_size = int(len(train_dev) / rate['valid'])
-    mod = len(train_dev) % rate['valid']
-
-    train_dev_sub = []
-    for l in zip(*[iter(train_dev)] * slice_size):
-        train_dev_sub.append(list(l))
-    train_dev_sub[-1].extend(train_dev[-mod:])
-
-    if debug:
-        print('train_dev:', len(train_dev))
-        print('test:', len(test))
-        print('train_dev_sub:', len(train_dev_sub))
-        for i, unit in enumerate(train_dev_sub, start=1):
-            unique = set()
-            for d in unit:
-                unique.add(d['id'])
-            print('{}: size:{}, unique:{}'.format(i, len(unit), len(unique)))
-
-    return train_dev_sub, test
-"""
-
-
 def separate_train_dev_test(data, index):
     train = []
     dev = []
@@ -355,3 +296,35 @@ class Iterator:
 
         for batch in batches:
             yield batch
+
+
+class MixIterator:
+    def __init__(self, iterator1, iterator2, shuffle=True, type='over', multiple=1):
+        # iterator1を大きいデータサイズのiteratorに指定する
+        self.batches = []
+
+        if type == 'over':
+            for batch in iterator1.batches:
+                self.batches.append([batch, False])
+            for i in range(multiple):
+                for batch in iterator2.batches:
+                    self.batches.append([batch, True])
+
+        elif type == 'under':
+            random.seed(0)
+            ite = random.sample(iterator1.batches, iterator2.size * multiple)
+            for batch in ite:
+                self.batches.append([batch, False])
+            for i in range(multiple):
+                for batch in iterator2.batches:
+                    self.batches.append([batch, True])
+
+        self.shuffle = shuffle
+
+    def generate(self):
+        batches = self.batches
+        if self.shuffle:
+            batches = random.sample(batches, len(batches))
+
+        for batch in batches:
+            yield batch[0], batch[1]

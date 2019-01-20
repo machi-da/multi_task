@@ -1,8 +1,4 @@
-import argparse
-import configparser
-import re
 import os
-import glob
 import copy
 import numpy as np
 
@@ -139,11 +135,11 @@ class Evaluate:
         best_param_dic[key] = {'macro': macro, 'micro': micro}
 
         # range: 1~9
-        # for i in range(1, 10):
-        #     init_threshold = round(i * 0.1, 1)
-        #     _, _, _, macro, micro = self.label_init(label_data, test_data, init_threshold)
-        #     key = 'init {}'.format(init_threshold)
-        #     best_param_dic[key] = {'macro': macro, 'micro': micro}
+        for i in range(1, 10):
+            init_threshold = round(i * 0.1, 1)
+            _, _, _, macro, micro = self.label_init(label_data, test_data, init_threshold)
+            key = 'init {}'.format(init_threshold)
+            best_param_dic[key] = {'macro': macro, 'micro': micro}
 
         if align_data:
             for i in range(1, 10):

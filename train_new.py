@@ -272,7 +272,7 @@ def main():
                 rate, count, tf_lit, macro, micro = evaluater.eval_param(alignments, [], test_data, init, mix)
             test_macro_score = round(macro, 3)
             test_micro_score = round(micro, 3)
-            logger.info('E{} ##   {}: {}\tdev:{}, micro:{}, macro:{} {}'.format(epoch, ite, param, dev_score, test_micro_score, dataset_new.float_to_str(rate), test_macro_score))
+            logger.info('E{} ##  {}: {}\tdev: {}, micro: {}, macro: {} {}'.format(epoch, ite, param, dev_score, test_micro_score, dataset_new.float_to_str(rate), test_macro_score))
 
             dev_test_info[ite] = {
                 'id': test_id,
@@ -311,7 +311,7 @@ def main():
         ave_macro_score = round(ave_macro_score / valid_num, 3)
         ave_micro_score = round(ave_micro_score / valid_num, 3)
         ave_test_score = [ave_test_score[i] / valid_num for i in range(len(ave_test_score))]
-        logger.info('E{} ## loss:{}, dev:{}, micro:{}, macro:{} {}'.format(epoch, train_loss, ave_dev_score, ave_micro_score, dataset_new.float_to_str(ave_test_score), ave_macro_score))
+        logger.info('E{} ## loss: {}, dev: {}, micro: {}, macro: {} {}'.format(epoch, train_loss, ave_dev_score, ave_micro_score, dataset_new.float_to_str(ave_test_score), ave_macro_score))
 
         label, align, tf = dataset_new.sort_multi_list(id_total, label_total, align_total, tf_total)
 
@@ -328,7 +328,7 @@ def main():
 
     """MODEL SAVE"""
     best_epoch = max(accuracy_dic, key=(lambda x: accuracy_dic[x][0]))
-    logger.info('best_epoch:{}, dev:{}, micro:{}, macro:{}'.format(best_epoch, accuracy_dic[best_epoch][0], accuracy_dic[best_epoch][1], accuracy_dic[best_epoch][2], model_save_dir))
+    logger.info('best_epoch: {}, dev: {}, micro: {}, macro: {}'.format(best_epoch, accuracy_dic[best_epoch][0], accuracy_dic[best_epoch][1], accuracy_dic[best_epoch][2], model_save_dir))
     shutil.copyfile(model_save_dir + 'model_epoch_{}.npz'.format(best_epoch), model_save_dir + 'best_model.npz')
 
 

@@ -22,9 +22,10 @@ def parse_args():
     parser.add_argument('--epoch', '-e', type=int, default=10)
     parser.add_argument('--pretrain_epoch', '-pe', type=int, default=10)
     parser.add_argument('--gpu', '-g', type=int, default=-1)
-    parser.add_argument('--model', '-m', choices=['multi', 'label', 'encdec', 'pretrain'], default='multi')
+    parser.add_argument('--model', '-m', choices=['label'], default='label')
     parser.add_argument('--pretrain_w2v', '-p', action='store_true')
     parser.add_argument('--data_path', '-d', choices=['local', 'server', 'test'], default='server')
+    parser.add_argument('--load_model', '-l', type=str)
     args = parser.parse_args()
     return args
 
@@ -41,25 +42,28 @@ def main():
     model_type = args.model
     pretrain_w2v = args.pretrain_w2v
     data_path = args.data_path
+    load_model = args.load_model
 
     """DIR PREPARE"""
     config.read(config_file)
     vocab_size = int(config['Parameter']['vocab_size'])
-    coefficient = float(config['Parameter']['coefficient'])
 
     if pretrain_w2v:
         vocab_size = 'p' + str(vocab_size)
 
-    if model_type == 'multi':
-        model_dir = './super_{}_{}_{}_c{}/'.format(model_type, vocab_size, data_path[0], coefficient)
-    else:
-        model_dir = './super_{}_{}_{}/'.format(model_type, vocab_size, data_path[0])
+    base_dir = './pre_{}_{}_{}/'.format(model_type, vocab_size, data_path[0])
+    model_save_dir = base_dir
 
-    if not os.path.exists(model_dir):
-        os.mkdir(model_dir)
-        shutil.copyfile(config_file, model_dir + config_file)
-    config_file = model_dir + config_file
+    if not os.path.exists(base_dir):
+        os.mkdir(batch_size)
+        shutil.copyfile(config_file, base_dir + config_file)
+    config_file = base_dir + config_file
     config.read(config_file)
+
+    if load_model is not None:
+        model_save_dir = base_dir + load_model.replace('.npz', '') + '/'
+        if not os.path.exists(model_save_dir):
+            os.mkdir(model_save_dir)
 
     """PARAMATER"""
     embed_size = int(config['Parameter']['embed_size'])
@@ -69,109 +73,127 @@ def main():
     weight_decay = float(config['Parameter']['weight_decay'])
     gradclip = float(config['Parameter']['gradclip'])
     vocab_size = int(config['Parameter']['vocab_size'])
-    coefficient = float(config['Parameter']['coefficient'])
     valid_num = int(config['Parameter']['valid_num'])
     """LOGGER"""
-    log_file = model_dir + 'log.txt'
+    log_file = model_save_dir + 'log.txt'
     logger = dataset_new.prepare_logger(log_file)
 
     logger.info(args)  # 引数を記録
     logger.info('[Training start] logging to {}'.format(log_file))
 
     """DATASET"""
+    train_src_file = config[data_path]['train_src_file']
+    train_trg_file = config[data_path]['train_trg_file']
+    valid_src_file = config[data_path]['valid_src_file']
+    valid_trg_file = config[data_path]['valid_trg_file']
     test_src_file = config[data_path]['single_src_file']
     test_trg_file = config[data_path]['single_trg_file']
     src_w2v_file = config[data_path]['src_w2v_file']
     trg_w2v_file = config[data_path]['trg_w2v_file']
 
-    data = dataset_new.load_label_corpus_file(test_src_file, test_trg_file)
-    data_sub_lit = dataset_new.split_valid_data(data, valid_num)
+    qa_train_data = dataset_new.load_label_corpus_file(train_src_file, train_trg_file)
+    qa_valid_data = dataset_new.load_label_corpus_file(valid_src_file, valid_trg_file)
+    test_data = dataset_new.load_label_corpus_file(test_src_file, test_trg_file)
+    test_data_sub_lit = dataset_new.split_valid_data(test_data, valid_num)
 
     evaluater = evaluate_new.Evaluate()
 
+    """VOCABULARY"""
+    src_vocab, trg_vocab, sos, eos = dataset_new.prepare_vocab(base_dir, qa_train_data, vocab_size, gpu_id)
+    src_vocab_size = len(src_vocab.vocab)
+    trg_vocab_size = len(trg_vocab.vocab)
+
+    src_initialW, trg_initialW = None, None
+    if pretrain_w2v:
+        w2v = word2vec.Word2Vec()
+        src_initialW, vector_size, src_match_word_count = w2v.make_initialW(src_vocab.vocab, src_w2v_file)
+        trg_initialW, vector_size, trg_match_word_count = w2v.make_initialW(trg_vocab.vocab, trg_w2v_file)
+        logger.info('Initialize w2v embedding. Match: src {}/{}, trg {}/{}'.format(src_match_word_count, src_vocab_size, trg_match_word_count, trg_vocab_size))
+
+    logger.info('src_vocab size: {}, trg_vocab size: {}'.format(src_vocab_size, trg_vocab_size))
+
+    """MODEL"""
+    model = model_supervise.Label(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, src_initialW, trg_initialW)
+
+    """OPTIMIZER"""
+    optimizer = chainer.optimizers.Adam()
+    optimizer.setup(model)
+    optimizer.add_hook(chainer.optimizer.GradientClipping(gradclip))
+    optimizer.add_hook(chainer.optimizer.WeightDecay(weight_decay))
+
+    """GPU"""
+    if gpu_id >= 0:
+        logger.info('Use GPU')
+        chainer.cuda.get_device_from_id(gpu_id).use()
+        model.to_gpu()
+
+    """PRETRAIN"""
+    if not load_model:
+        logger.info('Pre-train start')
+        logger.info('train size: {}, valid size: {}'.format(len(qa_train_data), len(qa_valid_data)))
+
+        train_iter = dataset_new.Iterator(qa_train_data, src_vocab, trg_vocab, batch_size, gpu_id, sort=True, shuffle=True)
+        valid_iter = dataset_new.Iterator(qa_valid_data, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
+
+        pretrain_loss_dic = {}
+        for epoch in range(1, pretrain_epoch + 1):
+            train_loss = 0
+            for i, batch in enumerate(train_iter.generate(), start=1):
+                try:
+                    loss = model.pretrain(*batch)
+                    train_loss += loss.data
+                    optimizer.target.cleargrads()
+                    loss.backward()
+                    optimizer.update()
+
+                except Exception as e:
+                    logger.info('P{} ## train iter: {}, {}'.format(epoch, i, e))
+            chainer.serializers.save_npz(model_save_dir + 'p_model_epoch_{}.npz'.format(epoch), model)
+
+            """EVALUATE"""
+            valid_loss = 0
+            for batch in valid_iter.generate():
+                with chainer.no_backprop_mode(), chainer.using_config('train', False):
+                    valid_loss += model.pretrain(*batch).data
+            logger.info('P{} ## train loss: {}, val loss:{}'.format(epoch, train_loss, valid_loss))
+            pretrain_loss_dic[epoch] = valid_loss
+
+        """MODEL SAVE"""
+        best_epoch = min(pretrain_loss_dic, key=(lambda x: pretrain_loss_dic[x]))
+        logger.info('best_epoch:{}, val loss: {}'.format(best_epoch, pretrain_loss_dic[best_epoch]))
+        shutil.copyfile(model_save_dir + 'p_model_epoch_{}.npz'.format(best_epoch), model_save_dir + 'p_best_model.npz')
+        logger.info('Pre-train finish')
+
+    """MAIN"""
     cross_valid_result = []
     for ite in range(1, valid_num + 1):
-        model_valid_dir = model_dir + 'valid{}/'.format(ite)
+        model_valid_dir = model_save_dir + 'valid{}/'.format(ite)
         if not os.path.exists(model_valid_dir):
             os.mkdir(model_valid_dir)
 
-        train_data, dev_data, test_data = dataset_new.separate_train_dev_test(data_sub_lit, ite)
+        train_data, dev_data, test_data = dataset_new.separate_train_dev_test(test_data_sub_lit, ite)
         test_data_id = []
         for t in test_data:
             test_data_id.append(t['id'])
 
-        """VOCABULARY"""
-        src_vocab, trg_vocab, sos, eos = dataset_new.prepare_vocab(model_valid_dir, train_data, vocab_size, gpu_id)
-        src_vocab_size = len(src_vocab.vocab)
-        trg_vocab_size = len(trg_vocab.vocab)
-
-        src_initialW, trg_initialW = None, None
-        if pretrain_w2v:
-            w2v = word2vec.Word2Vec()
-            src_initialW, vector_size, src_match_word_count = w2v.make_initialW(src_vocab.vocab, src_w2v_file)
-            trg_initialW, vector_size, trg_match_word_count = w2v.make_initialW(trg_vocab.vocab, trg_w2v_file)
-            logger.info('Initialize w2v embedding. Match: src {}/{}, trg {}/{}'.format(src_match_word_count, src_vocab_size, trg_match_word_count, trg_vocab_size))
-
-        """ITERATOR"""
-        train_iter = dataset_new.Iterator(train_data, src_vocab, trg_vocab, batch_size, gpu_id, sort=True, shuffle=True)
-        # train_iter = dataset_new.Iterator(train_data, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
+        train_iter = dataset_new.Iterator(train_data, src_vocab, trg_vocab, batch_size, gpu_id, sort=True)
+        # train_iter = dataset_new.Iterator(train_data, src_vocab, trg_vocab, batch_size, gpu_id, sort=True)
         dev_iter = dataset_new.Iterator(dev_data, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
         test_iter = dataset_new.Iterator(test_data, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
 
-        logger.info('V{} ## train: {}, dev: {}, test: {}, src_vocab: {}, trg_vocab: {}'.format(ite, len(train_data), len(dev_data), len(test_data), src_vocab_size, trg_vocab_size))
+        logger.info('V{} ## train: {}, dev: {}, test: {}'.format(ite, len(train_data), len(dev_data), len(test_data)))
 
         """MODEL"""
-        if model_type == 'multi':
-            model = model_supervise.Multi(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, coefficient, src_initialW, trg_initialW)
-        elif model_type in ['label', 'pretrain']:
-            model = model_supervise.Label(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, src_initialW, trg_initialW)
-        else:
-            model = model_supervise.EncoderDecoder(src_vocab_size, trg_vocab_size, embed_size, hidden_size, dropout_ratio, src_initialW, trg_initialW)
+        model = model_supervise.Label(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, src_initialW, trg_initialW)
+        chainer.serializers.load_npz(model_save_dir + 'p_best_model.npz', model)
+        if gpu_id >= 0:
+            model.to_gpu()
 
         """OPTIMIZER"""
         optimizer = chainer.optimizers.Adam()
         optimizer.setup(model)
         optimizer.add_hook(chainer.optimizer.GradientClipping(gradclip))
         optimizer.add_hook(chainer.optimizer.WeightDecay(weight_decay))
-
-        """GPU"""
-        if gpu_id >= 0:
-            chainer.cuda.get_device_from_id(gpu_id).use()
-            model.to_gpu()
-
-        """PRETRAIN"""
-        if model_type == 'pretrain':
-            logger.info('Pre-train start')
-            logger.info('train size: {}, valid size: {}'.format(len(train_data), len(dev_data)))
-            pretrain_loss_dic = {}
-            for epoch in range(1, pretrain_epoch + 1):
-                train_loss = 0
-                for i, batch in enumerate(train_iter.generate(), start=1):
-                    try:
-                        loss = model.pretrain(*batch)
-                        train_loss += loss.data
-                        optimizer.target.cleargrads()
-                        loss.backward()
-                        optimizer.update()
-
-                    except Exception as e:
-                        logger.info('V{} ## P{} ## train iter: {}, {}'.format(ite, epoch, i, e))
-
-                chainer.serializers.save_npz(model_valid_dir + 'p_model_epoch_{}.npz'.format(epoch), model)
-
-                """EVALUATE"""
-                valid_loss = 0
-                for batch in dev_iter.generate():
-                    with chainer.no_backprop_mode(), chainer.using_config('train', False):
-                        valid_loss += model.pretrain(*batch).data
-                logger.info('V{} ## P{} ## train loss: {}, val loss:{}'.format(ite, epoch, train_loss, valid_loss))
-                pretrain_loss_dic[epoch] = valid_loss
-
-            """MODEL SAVE"""
-            best_epoch = min(pretrain_loss_dic, key=(lambda x: pretrain_loss_dic[x]))
-            logger.info('best_epoch:{}, val loss: {}'.format(best_epoch, pretrain_loss_dic[best_epoch]))
-            shutil.copyfile(model_valid_dir + 'p_model_epoch_{}.npz'.format(best_epoch), model_valid_dir + 'p_best_model.npz')
-            logger.info('Pre-train finish')
 
         """TRAIN"""
         epoch_info = {}
@@ -194,28 +216,17 @@ def main():
             for i, batch in enumerate(dev_iter.generate(), start=1):
                 try:
                     with chainer.no_backprop_mode(), chainer.using_config('train', False):
-                        _, label, align = model.predict(batch[0], sos, eos)
+                        _, label, _ = model.predict(batch[0], sos, eos)
                 except Exception as e:
                     logger.info('V{} ## E{} ## dev iter: {}, {}'.format(ite, epoch, i, e))
 
-                if model_type == 'multi':
-                    for l, a in zip(label, align):
-                        labels.append(chainer.cuda.to_cpu(l))
-                        alignments.append(chainer.cuda.to_cpu(a))
-                elif model_type in ['label', 'pretrain']:
-                    for l in label:
-                        labels.append(chainer.cuda.to_cpu(l))
-                else:
-                    for a in align:
-                        alignments.append(chainer.cuda.to_cpu(a))
+                for l in label:
+                    labels.append(chainer.cuda.to_cpu(l))
 
-            if model_type == 'encdec':
-                best_param_dic = evaluater.param_search(alignments, [], dev_data)
-            else:
-                best_param_dic = evaluater.param_search(labels, alignments, dev_data)
+            best_param_dic = evaluater.param_search(labels, alignments, dev_data)
             param = max(best_param_dic, key=lambda x: best_param_dic[x]['macro'])
             init, mix = evaluate_new.key_to_param(param)
-            dev_score = round(best_param_dic[param]['macro'], 3)
+            dev_score = round(best_param_dic[param], 3)
 
             """TEST"""
             outputs, labels, alignments = [], [], []
@@ -225,23 +236,12 @@ def main():
                         output, label, align = model.predict(batch[0], sos, eos)
                 except Exception as e:
                     logger.info('V{} ## E{} ## test iter: {}, {}'.format(ite, epoch, i, e))
-                if model_type == 'multi':
-                    for o, l, a in zip(output, label, align):
-                        outputs.append(trg_vocab.id2word(chainer.cuda.to_cpu(o)))
-                        labels.append(chainer.cuda.to_cpu(l))
-                        alignments.append(chainer.cuda.to_cpu(a))
-                elif model_type in ['label', 'pretrain']:
-                    for l in label:
-                        labels.append(chainer.cuda.to_cpu(l))
-                else:
-                    for o, a in zip(output, align):
-                        outputs.append(trg_vocab.id2word(chainer.cuda.to_cpu(o)))
-                        alignments.append(chainer.cuda.to_cpu(a))
 
-            if model_type in ['multi', 'label', 'pretrain']:
-                rate, count, tf_lit, macro, micro = evaluater.eval_param(labels, alignments, test_data, init, mix)
-            else:
-                rate, count, tf_lit, macro, micro = evaluater.eval_param(alignments, [], test_data, init, mix)
+                for l in label:
+                    labels.append(chainer.cuda.to_cpu(l))
+
+            rate, count, tf_lit, macro, micro = evaluater.eval_param(labels, alignments, test_data, init, mix)
+
             test_macro_score = round(macro, 3)
             test_micro_score = round(micro, 3)
             logger.info('V{} ## E{} ## loss: {}, dev: {}, param: {}, macro: {}, micro: {}'.format(ite, epoch, train_loss, dev_score, param, test_macro_score, test_micro_score))
@@ -265,7 +265,7 @@ def main():
         """MODEL SAVE"""
         best_epoch = max(epoch_info, key=(lambda x: epoch_info[x]['dev_score']))
         cross_valid_result.append(epoch_info[best_epoch])
-        logger.info('V{} ## best_epoch: {}, dev: {}, macro: {}, micro: {}'.format(ite, best_epoch, epoch_info[best_epoch]['dev_score'], epoch_info[best_epoch]['macro'], epoch_info[best_epoch]['micro']))
+        logger.info('V{} ## best_epoch: {}, dev: {}, macro: {}, micro: {}'.format(ite, best_epoch, epoch_info[best_epoch]['dev_score'], epoch_info[best_epoch]['macro'],epoch_info[best_epoch]['micro']))
         shutil.copyfile(model_valid_dir + 'model_epoch_{}.npz'.format(best_epoch), model_valid_dir + 'best_model.npz')
 
         logger.info('')
@@ -299,12 +299,12 @@ def main():
     label, align, tf = dataset_new.sort_multi_list(id_total, label_total, align_total, tf_total)
 
     if label:
-        with open(model_dir + 'label.txt', 'w')as f:
+        with open(model_save_dir + 'label.txt', 'w')as f:
             [f.write('{}\n'.format(l)) for l in label]
     if align:
-        with open(model_dir + 'align.txt', 'w')as f:
+        with open(model_save_dir + 'align.txt', 'w')as f:
             [f.write('{}\n'.format(a)) for a in align]
-    with open(model_dir + 'tf.txt', 'w')as f:
+    with open(model_save_dir + 'tf.txt', 'w')as f:
         [f.write('{}\n'.format(l)) for l in tf]
 
 
