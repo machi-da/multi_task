@@ -284,7 +284,7 @@ def main():
         ave_micro_score += r['micro']
         for i, rate in enumerate(r['rate']):
             ave_test_score[i] += rate
-        logger.info('   {}: e{}, {}\tdev: {}, micro: {}, macro: {} {}'.format(v, r['epoch'], r['param'], r['dev_score'], r['micro'], dataset_new.float_to_str(r['rate']), r['macro']))
+        logger.info('  {}: e{}, {}\tdev: {}, micro: {}, macro: {} {}'.format(v, r['epoch'], r['param'], r['dev_score'], r['micro'], dataset_new.float_to_str(r['rate']), r['macro']))
 
         id_total.extend(r['id'])
         label_total.extend(r['label'])

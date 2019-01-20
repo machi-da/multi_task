@@ -311,7 +311,7 @@ def main():
         ave_macro_score = round(ave_macro_score / valid_num, 3)
         ave_micro_score = round(ave_micro_score / valid_num, 3)
         ave_test_score = [ave_test_score[i] / valid_num for i in range(len(ave_test_score))]
-        logger.info('E{} ## loss: {}, dev: {}, micro: {}, macro: {} {}'.format(epoch, train_loss, ave_dev_score, ave_micro_score, dataset_new.float_to_str(ave_test_score), ave_macro_score))
+        logger.info('E{} ##\tloss: {}, dev: {}, micro: {}, macro: {} {}'.format(epoch, train_loss, ave_dev_score, ave_micro_score, dataset_new.float_to_str(ave_test_score), ave_macro_score))
 
         label, align, tf = dataset_new.sort_multi_list(id_total, label_total, align_total, tf_total)
 

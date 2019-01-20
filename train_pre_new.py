@@ -55,7 +55,7 @@ def main():
     model_save_dir = base_dir
 
     if not os.path.exists(base_dir):
-        os.mkdir(batch_size)
+        os.mkdir(base_dir)
         shutil.copyfile(config_file, base_dir + config_file)
     config_file = base_dir + config_file
     config.read(config_file)
@@ -226,7 +226,7 @@ def main():
             best_param_dic = evaluater.param_search(labels, alignments, dev_data)
             param = max(best_param_dic, key=lambda x: best_param_dic[x]['macro'])
             init, mix = evaluate_new.key_to_param(param)
-            dev_score = round(best_param_dic[param], 3)
+            dev_score = round(best_param_dic[param]['macro'], 3)
 
             """TEST"""
             outputs, labels, alignments = [], [], []
@@ -284,7 +284,7 @@ def main():
         ave_micro_score += r['micro']
         for i, rate in enumerate(r['rate']):
             ave_test_score[i] += rate
-        logger.info('   {}: e{}, {}\tdev: {}, micro: {}, macro: {} {}'.format(v, r['epoch'], r['param'], r['dev_score'], r['micro'], dataset_new.float_to_str(r['rate']), r['macro']))
+        logger.info('  {}: e{}, {}\tdev: {}, micro: {}, macro: {} {}'.format(v, r['epoch'], r['param'], r['dev_score'], r['micro'], dataset_new.float_to_str(r['rate']), r['macro']))
 
         id_total.extend(r['id'])
         label_total.extend(r['label'])
