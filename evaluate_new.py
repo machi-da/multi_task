@@ -20,9 +20,9 @@ class Evaluate:
             sent_num = d['sent_num'] if d['sent_num'] <= 7 else 7
             if label.argmax() == d['label']:
                 dic[sent_num][0] += 1
-                tf_lit.append([d['id'], 'T'])
+                tf_lit.append('T')
             else:
-                tf_lit.append([d['id'], 'F'])
+                tf_lit.append('F')
             dic[sent_num][1] += 1
 
         rate = [v[0]/v[1] for k, v in dic.items()]
@@ -46,17 +46,17 @@ class Evaluate:
             if len(filter_index) > 0:
                 if filter_index[0] == d['label']:
                     dic[sent_num][0] += 1
-                    tf_lit.append([d['id'], 'T'])
+                    tf_lit.append('T')
                 else:
-                    tf_lit.append([d['id'], 'F'])
+                    tf_lit.append('F')
                 dic[sent_num][1] += 1
 
             else:
                 if label.argmax() == d['label']:
                     dic[sent_num][0] += 1
-                    tf_lit.append([d['id'], 'T'])
+                    tf_lit.append('T')
                 else:
-                    tf_lit.append([d['id'], 'F'])
+                    tf_lit.append('F')
                 dic[sent_num][1] += 1
 
         rate = [v[0] / v[1] for k, v in dic.items()]
@@ -79,9 +79,9 @@ class Evaluate:
 
             if label.argmax() == d['label']:
                 dic[sent_num][0] += 1
-                tf_lit.append([d['id'], 'T'])
+                tf_lit.append('T')
             else:
-                tf_lit.append([d['id'], 'F'])
+                tf_lit.append('F')
             dic[sent_num][1] += 1
 
         rate = [v[0] / v[1] for k, v in dic.items()]
@@ -107,17 +107,17 @@ class Evaluate:
             if len(filter_index) > 0:
                 if filter_index[0] == d['label']:
                     dic[sent_num][0] += 1
-                    tf_lit.append([d['id'], 'T'])
+                    tf_lit.append('T')
                 else:
-                    tf_lit.append([d['id'], 'F'])
+                    tf_lit.append('F')
                 dic[sent_num][1] += 1
 
             else:
                 if label.argmax() == d['label']:
                     dic[sent_num][0] += 1
-                    tf_lit.append([d['id'], 'T'])
+                    tf_lit.append('T')
                 else:
-                    tf_lit.append([d['id'], 'F'])
+                    tf_lit.append('F')
                 dic[sent_num][1] += 1
 
         rate = [v[0] / v[1] for k, v in dic.items()]
@@ -139,11 +139,11 @@ class Evaluate:
         best_param_dic[key] = {'macro': macro, 'micro': micro}
 
         # range: 1~9
-        for i in range(1, 10):
-            init_threshold = round(i * 0.1, 1)
-            _, _, _, macro, micro = self.label_init(label_data, test_data, init_threshold)
-            key = 'init {}'.format(init_threshold)
-            best_param_dic[key] = {'macro': macro, 'micro': micro}
+        # for i in range(1, 10):
+        #     init_threshold = round(i * 0.1, 1)
+        #     _, _, _, macro, micro = self.label_init(label_data, test_data, init_threshold)
+        #     key = 'init {}'.format(init_threshold)
+        #     best_param_dic[key] = {'macro': macro, 'micro': micro}
 
         if align_data:
             for i in range(1, 10):

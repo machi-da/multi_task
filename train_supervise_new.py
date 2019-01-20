@@ -99,22 +99,13 @@ def main():
         test_data_id = []
         for t in test_data:
             test_data_id.append(t['id'])
-        # aaa = 1
-        # for t in test_data:
-        #     print(aaa, t['label'] + 1)
-        #     aaa += 1
-        #     for tt in t['text']:
-        #         print(''.join(tt))
-        # exit()
 
         """VOCABULARY"""
         src_vocab, trg_vocab, sos, eos = dataset_new.prepare_vocab(model_valid_dir, train_data, vocab_size, gpu_id)
         src_vocab_size = len(src_vocab.vocab)
         trg_vocab_size = len(trg_vocab.vocab)
 
-        src_initialW = None
-        trg_initialW = None
-
+        src_initialW, trg_initialW = None, None
         if pretrain_w2v:
             w2v = word2vec.Word2Vec()
             src_initialW, vector_size, src_match_word_count = w2v.make_initialW(src_vocab.vocab, src_w2v_file)
@@ -199,9 +190,7 @@ def main():
             chainer.serializers.save_npz(model_valid_dir + 'model_epoch_{}.npz'.format(epoch), model)
 
             """DEV"""
-            outputs = []
-            labels = []
-            alignments = []
+            outputs, labels, alignments = [], [], []
             for i, batch in enumerate(dev_iter.generate(), start=1):
                 try:
                     with chainer.no_backprop_mode(), chainer.using_config('train', False):
@@ -232,9 +221,7 @@ def main():
             dev_score = round(best_param_dic[param]['macro'], 3)
 
             """TEST"""
-            outputs = []
-            labels = []
-            alignments = []
+            outputs, labels, alignments = [], [], []
             for i, batch in enumerate(test_iter.generate(), start=1):
                 try:
                     with chainer.no_backprop_mode(), chainer.using_config('train', False):
@@ -260,7 +247,7 @@ def main():
                 rate, count, tf_lit, macro, micro = evaluater.eval_param(alignments, [], test_data, init, mix)
             test_macro_score = round(macro, 3)
             test_micro_score = round(micro, 3)
-            logger.info('V{} ## E{} ## loss:{}, dev: {}, param:{}, macro: {}, micro: {}'.format(ite, epoch, train_loss, dev_score, param, test_macro_score, test_micro_score))
+            logger.info('V{} ## E{} ## loss:{}, dev:{}, param:{}, macro:{}, micro:{}'.format(ite, epoch, train_loss, dev_score, param, test_macro_score, test_micro_score))
 
             epoch_info[epoch] = {
                 'id': test_data_id,
@@ -300,8 +287,7 @@ def main():
         ave_micro_score += r['micro']
         for i, rate in enumerate(r['rate']):
             ave_test_score[i] += rate
-
-        logger.info('   {}: e{}, {}\tmicro:{}, macro:{} {}'.format(v, r['epoch'], r['param'], r['micro'], dataset_new.float_to_str(r['rate']), r['macro']))
+        logger.info('   {}: e{}, {}\tdev:{}, micro:{}, macro:{} {}'.format(v, r['epoch'], r['param'], r['dev_score'], r['micro'], dataset_new.float_to_str(r['rate']), r['macro']))
 
         id_total.extend(r['id'])
         label_total.extend(r['label'])
@@ -322,7 +308,7 @@ def main():
         with open(model_dir + 'align.txt', 'w')as f:
             [f.write('{}\n'.format(a)) for a in align]
     with open(model_dir + 'tf.txt', 'w')as f:
-        [f.write('{}\n'.format(l[0])) for l in tf]
+        [f.write('{}\n'.format(l)) for l in tf]
 
 
 if __name__ == '__main__':
