@@ -45,6 +45,13 @@ def save_output(save_dir, epoch_info):
     return
 
 
+def save_list(file_name, lit):
+    if lit:
+        with open(file_name + 'label.txt', 'w')as f:
+            [f.write('{}\n'.format(l)) for l in lit]
+    return
+
+
 def sort_multi_list(id, label, align, tf):
     if label:
         if align:

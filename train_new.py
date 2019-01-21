@@ -24,7 +24,7 @@ def parse_args():
     parser.add_argument('--gpu', '-g', type=int, default=-1)
     parser.add_argument('--model', '-m', choices=['multi', 'label', 'encdec', 'pretrain'], default='multi')
     parser.add_argument('--pretrain_w2v', '-p', action='store_true')
-    parser.add_argument('--data_path', '-d', choices=['local', 'server', 'test'], default='server')
+    parser.add_argument('--data_path', '-d', choices=['local', 'server', 'test', 'preserver'], default='server')
     parser.add_argument('--load_model', '-l', type=str)
     args = parser.parse_args()
     return args
@@ -130,7 +130,7 @@ def main():
         id_lit = []
         for t in test_data:
             id_lit.append(t['id'])
-        dev_test_iter_lit.append([dev_iter, test_iter, id_lit, test_data])
+        dev_test_iter_lit.append([dev_iter, test_iter, dev_data, test_data, id_lit])
 
     """MODEL"""
     if model_type == 'multi':
@@ -194,6 +194,7 @@ def main():
     accuracy_dic = {}
     for epoch in range(1, n_epoch + 1):
         train_loss = 0
+
         for i, batch in enumerate(train_iter.generate(), start=1):
             try:
                 loss = optimizer.target(*batch)
@@ -210,16 +211,13 @@ def main():
         """DEV & TEST"""
         dev_test_info = {}
         for ite, lit in enumerate(dev_test_iter_lit, start=1):
-            dev_iter = lit[0]
-            test_iter = lit[1]
-            test_id = lit[2]
-            test_data = lit[3]
+            dev_iter, test_iter, dev_data, test_data, test_id = lit
             """DEV"""
-            outputs, labels, alignments = [], [], []
+            labels, alignments = [], []
             for i, batch in enumerate(dev_iter.generate(), start=1):
                 try:
                     with chainer.no_backprop_mode(), chainer.using_config('train', False):
-                        output, label, align = model.predict(batch[0], sos, eos)
+                        _, label, align = model.predict(batch[0], sos, eos)
                 except Exception as e:
                     logger.info('E{} ## test iter: {}, {}'.format(epoch, i, e))
 
@@ -289,40 +287,37 @@ def main():
                 'micro': test_micro_score
             }
 
-        ave_dev_score = 0
-        ave_macro_score = 0
-        ave_micro_score = 0
+        ave_dev_score, ave_macro_score, ave_micro_score = 0, 0, 0
         ave_test_score = [0 for _ in range(len(dev_test_info[1]['rate']))]
-        id_total = []
-        label_total = []
-        align_total = []
-        tf_total = []
-        for k, v in dev_test_info.items():
-            ave_dev_score += v['dev_score']
-            ave_macro_score += v['macro']
-            ave_micro_score += v['micro']
-            for i, rate in enumerate(v['rate']):
-                ave_test_score[i] += rate
-            id_total.extend(v['id'])
-            label_total.extend(v['label'])
-            align_total.extend(v['align'])
-            tf_total.extend(v['tf'])
+        id_total, label_total, align_total, tf_total = [], [], [], []
+        remove_lit = ['id', 'label', 'align', 'hypo', 'tf']
+
+        with open(model_save_dir + 'model_epoch_{}.score'.format(epoch), 'w')as f:
+            for k, v in dev_test_info.items():
+                if k in remove_lit:
+                    continue
+                f.write('{}: {}\n'.format(k, v))
+
+                ave_dev_score += v['dev_score']
+                ave_macro_score += v['macro']
+                ave_micro_score += v['micro']
+                for i, rate in enumerate(v['rate']):
+                    ave_test_score[i] += rate
+                id_total.extend(v['id'])
+                label_total.extend(v['label'])
+                align_total.extend(v['align'])
+                tf_total.extend(v['tf'])
         ave_dev_score = round(ave_dev_score / valid_num, 3)
         ave_macro_score = round(ave_macro_score / valid_num, 3)
         ave_micro_score = round(ave_micro_score / valid_num, 3)
         ave_test_score = [ave_test_score[i] / valid_num for i in range(len(ave_test_score))]
-        logger.info('E{} ##\tloss: {}, dev: {}, micro: {}, macro: {} {}'.format(epoch, train_loss, ave_dev_score, ave_micro_score, dataset_new.float_to_str(ave_test_score), ave_macro_score))
+        logger.info('E{} ## loss: {}, dev: {}, micro: {}, macro: {} {}'.format(epoch, train_loss, ave_dev_score, ave_micro_score, dataset_new.float_to_str(ave_test_score), ave_macro_score))
+        logger.info('')
 
         label, align, tf = dataset_new.sort_multi_list(id_total, label_total, align_total, tf_total)
-
-        if label:
-            with open(model_save_dir + 'model_epoch_{}.label'.format(epoch), 'w')as f:
-                [f.write('{}\n'.format(l)) for l in label]
-        if align:
-            with open(model_save_dir + 'model_epoch_{}.align'.format(epoch), 'w')as f:
-                [f.write('{}\n'.format(a)) for a in align]
-        with open(model_save_dir + 'model_epoch_{}.tf'.format(epoch), 'w')as f:
-            [f.write('{}\n'.format(l)) for l in tf]
+        dataset_new.save_list(model_save_dir + 'model_epoch_{}.label'.format(epoch), label)
+        dataset_new.save_list(model_save_dir + 'model_epoch_{}.align'.format(epoch), align)
+        dataset_new.save_list(model_save_dir + 'model_epoch_{}.tf'.format(epoch), tf)
 
         accuracy_dic[epoch] = [ave_dev_score, ave_micro_score, ave_macro_score]
 

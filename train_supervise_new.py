@@ -244,7 +244,7 @@ def main():
                 rate, count, tf_lit, macro, micro = evaluater.eval_param(alignments, [], test_data, init, mix)
             test_macro_score = round(macro, 3)
             test_micro_score = round(micro, 3)
-            logger.info('V{} ## E{} ## loss: {}, dev: {}, param: {}, macro: {}, micro: {}'.format(ite, epoch, train_loss, dev_score, param, test_macro_score, test_micro_score))
+            logger.info('V{} ## E{} ## loss: {}, dev: {}, param: {}, micro: {}, macro: {}'.format(ite, epoch, train_loss, dev_score, param, test_micro_score, test_macro_score))
 
             epoch_info[epoch] = {
                 'id': test_data_id,
@@ -265,19 +265,15 @@ def main():
         """MODEL SAVE"""
         best_epoch = max(epoch_info, key=(lambda x: epoch_info[x]['dev_score']))
         cross_valid_result.append(epoch_info[best_epoch])
-        logger.info('V{} ## best_epoch: {}, dev: {}, macro: {}, micro: {}'.format(ite, best_epoch, epoch_info[best_epoch]['dev_score'], epoch_info[best_epoch]['macro'], epoch_info[best_epoch]['micro']))
+        logger.info('V{} ## best_epoch: {}, dev: {}, micro: {}, macro: {}'.format(ite, best_epoch, epoch_info[best_epoch]['dev_score'], epoch_info[best_epoch]['micro'], epoch_info[best_epoch]['macro']))
         shutil.copyfile(model_valid_dir + 'model_epoch_{}.npz'.format(best_epoch), model_valid_dir + 'best_model.npz')
 
         logger.info('')
 
-    ave_dev_score = 0
-    ave_macro_score = 0
-    ave_micro_score = 0
+    ave_dev_score, ave_macro_score, ave_micro_score = 0, 0, 0
     ave_test_score = [0 for _ in range(len(cross_valid_result[0]['rate']))]
-    id_total = []
-    label_total = []
-    align_total = []
-    tf_total = []
+    id_total, label_total, align_total, tf_total = [], [], [], []
+
     for v, r in enumerate(cross_valid_result, start=1):
         ave_dev_score += r['dev_score']
         ave_macro_score += r['macro']
@@ -297,15 +293,9 @@ def main():
     logger.info('dev: {}, micro: {}, macro: {} {}'.format(ave_dev_score, ave_micro_score, dataset_new.float_to_str(ave_test_score), ave_macro_score))
 
     label, align, tf = dataset_new.sort_multi_list(id_total, label_total, align_total, tf_total)
-
-    if label:
-        with open(model_dir + 'label.txt', 'w')as f:
-            [f.write('{}\n'.format(l)) for l in label]
-    if align:
-        with open(model_dir + 'align.txt', 'w')as f:
-            [f.write('{}\n'.format(a)) for a in align]
-    with open(model_dir + 'tf.txt', 'w')as f:
-        [f.write('{}\n'.format(l)) for l in tf]
+    dataset_new.save_list(model_dir + 'label.txt', label)
+    dataset_new.save_list(model_dir + 'align.txt', align)
+    dataset_new.save_list(model_dir + 'tf.txt', tf)
 
 
 if __name__ == '__main__':
