@@ -135,11 +135,11 @@ class Evaluate:
         best_param_dic[key] = {'macro': macro, 'micro': micro}
 
         # range: 1~9
-        for i in range(1, 10):
-            init_threshold = round(i * 0.1, 1)
-            _, _, _, macro, micro = self.label_init(label_data, test_data, init_threshold)
-            key = 'init {}'.format(init_threshold)
-            best_param_dic[key] = {'macro': macro, 'micro': micro}
+        # for i in range(1, 10):
+        #     init_threshold = round(i * 0.1, 1)
+        #     _, _, _, macro, micro = self.label_init(label_data, test_data, init_threshold)
+        #     key = 'init {}'.format(init_threshold)
+        #     best_param_dic[key] = {'macro': macro, 'micro': micro}
 
         if align_data:
             for i in range(1, 10):
@@ -148,13 +148,13 @@ class Evaluate:
                 key = 'mix {}'.format(weight)
                 best_param_dic[key] = {'macro': macro, 'micro': micro}
 
-            for i in range(1, 10):
-                weight = round(i * 0.1, 1)
-                for j in range(1, 10):
-                    init_threshold = round(j * 0.1, 1)
-                    _, _, _, macro, micro = self.label_mix_aligh_init(label_data, align_data, test_data, init_threshold, weight)
-                    key = 'init {} mix {}'.format(init_threshold, weight)
-                    best_param_dic[key] = {'macro': macro, 'micro': micro}
+            # for i in range(1, 10):
+            #     weight = round(i * 0.1, 1)
+            #     for j in range(1, 10):
+            #         init_threshold = round(j * 0.1, 1)
+            #         _, _, _, macro, micro = self.label_mix_aligh_init(label_data, align_data, test_data, init_threshold, weight)
+            #         key = 'init {} mix {}'.format(init_threshold, weight)
+            #         best_param_dic[key] = {'macro': macro, 'micro': micro}
 
         return best_param_dic
 

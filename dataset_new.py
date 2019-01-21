@@ -47,12 +47,14 @@ def save_output(save_dir, epoch_info):
 
 def save_list(file_name, lit):
     if lit:
-        with open(file_name + 'label.txt', 'w')as f:
+        with open(file_name, 'w')as f:
             [f.write('{}\n'.format(l)) for l in lit]
     return
 
 
 def sort_multi_list(id, label, align, tf):
+    print(id[-1])
+    print(label[-1])
     if label:
         if align:
             c = list(zip(id, label, align, tf))
@@ -63,6 +65,8 @@ def sort_multi_list(id, label, align, tf):
             c = list(zip(id, label, tf))
             c.sort()
             id, label, tf = zip(*c)
+            print(id[620])
+            print(label[620])
             return label, [], tf
     else:
         c = list(zip(id, align, tf))

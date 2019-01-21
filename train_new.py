@@ -222,16 +222,14 @@ def main():
                     logger.info('E{} ## test iter: {}, {}'.format(epoch, i, e))
 
                 if model_type == 'multi':
-                    for o, l, a in zip(output, label, align):
-                        outputs.append(trg_vocab.id2word(chainer.cuda.to_cpu(o)))
+                    for l, a in zip(label, align):
                         labels.append(chainer.cuda.to_cpu(l))
                         alignments.append(chainer.cuda.to_cpu(a))
                 elif model_type in ['label', 'pretrain']:
                     for l in label:
                         labels.append(chainer.cuda.to_cpu(l))
                 else:
-                    for o, a in zip(output, align):
-                        outputs.append(trg_vocab.id2word(chainer.cuda.to_cpu(o)))
+                    for a in align:
                         alignments.append(chainer.cuda.to_cpu(a))
 
             if model_type == 'encdec':
