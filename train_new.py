@@ -188,7 +188,7 @@ def main():
 
     if load_model:
         logger.info('load model: {}'.format(load_model))
-        chainer.serializers.load_npz(model_save_dir + load_model, model)
+        chainer.serializers.load_npz(base_dir + load_model, model)
 
     """TRAIN"""
     accuracy_dic = {}

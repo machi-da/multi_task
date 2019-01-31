@@ -22,9 +22,13 @@ def adjust(file_name):
 def main():
     args = sys.argv
     dir_path = args[1]
+    file_type = args[2]
 
     for i in range(1, 10 + 1):
-        file_name = dir_path + 'model_epoch_{}.label'.format(i)
+        if file_type == 'label':
+            file_name = dir_path + 'model_epoch_{}.label'.format(i)
+        elif file_type == 'align':
+            file_name = dir_path + 'model_epoch_{}.align'.format(i)
         adjust(file_name)
 
 

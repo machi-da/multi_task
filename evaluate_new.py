@@ -1,8 +1,5 @@
-import os
 import copy
 import numpy as np
-
-import dataset_new
 
 
 class Evaluate:
@@ -198,18 +195,3 @@ def key_to_param(key):
             return -1, float(k[1])
     else:
         return float(k[1]), float(k[3])
-
-
-def load_score_file(model_name):
-    label = []
-    align = []
-
-    label_file = model_name + '.label'
-    if os.path.isfile(label_file):
-        label = dataset.load_score_file(label_file)
-
-    align_file = model_name + '.align'
-    if os.path.isfile(align_file):
-        align = dataset.load_score_file(align_file)
-
-    return label, align

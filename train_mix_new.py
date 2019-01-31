@@ -133,12 +133,13 @@ def main():
         for t in test_data:
             test_data_id.append(t['id'])
 
-        qa_iter = dataset_new.Iterator(qa_train_data, src_vocab, trg_vocab, batch_size, gpu_id, sort=True, shuffle=True)
+        # qa_iter = dataset_new.Iterator(qa_train_data, src_vocab, trg_vocab, batch_size, gpu_id, sort=True, shuffle=True)
         train_iter = dataset_new.Iterator(train_data, src_vocab, trg_vocab, batch_size, gpu_id, sort=True, shuffle=True)
         dev_iter = dataset_new.Iterator(dev_data, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
         test_iter = dataset_new.Iterator(test_data, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
 
-        mix_train_iter = dataset_new.MixIterator(qa_iter, train_iter, shuffle=shuffle, type=sample_type, multiple=multiple)
+        # mix_train_iter = dataset_new.MixIterator(qa_iter, train_iter, shuffle=shuffle, type=sample_type, multiple=multiple)
+        # train_iter = dataset_new.MixIterator(qa_iter, train_iter, shuffle=shuffle, type=sample_type, multiple=multiple)
         if sample_type == 'over':
             qa_size = len(qa_train_data)
             train_size = len(train_data) * multiple
@@ -162,12 +163,14 @@ def main():
         epoch_info = {}
         for epoch in range(1, n_epoch + 1):
             train_loss = 0
-            for i, batch in enumerate(mix_train_iter.generate(), start=1):
+            # for i, batch in enumerate(mix_train_iter.generate(), start=1):
+            for i, batch in enumerate(train_iter.generate(), start=1):
                 try:
-                    if batch[1]:
-                        loss = optimizer.target(*batch[0])
-                    else:
-                        loss = model.pretrain(*batch[0])
+                    loss = optimizer.target(*batch)
+                    # if batch[1]:
+                    #     loss = optimizer.target(*batch[0])
+                    # else:
+                    #     loss = model.pretrain(*batch[0])
                     train_loss += loss.data
                     optimizer.target.cleargrads()
                     loss.backward()

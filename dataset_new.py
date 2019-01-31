@@ -53,8 +53,6 @@ def save_list(file_name, lit):
 
 
 def sort_multi_list(id, label, align, tf):
-    print(id[-1])
-    print(label[-1])
     if label:
         if align:
             c = list(zip(id, label, align, tf))
@@ -65,14 +63,37 @@ def sort_multi_list(id, label, align, tf):
             c = list(zip(id, label, tf))
             c.sort()
             id, label, tf = zip(*c)
-            print(id[620])
-            print(label[620])
             return label, [], tf
     else:
         c = list(zip(id, align, tf))
         c.sort()
         id, align, tf = zip(*c)
         return [], align, tf
+
+
+def load_score_file(model_name):
+    label = []
+    align = []
+
+    def load_score_file(score_file):
+        score_label = []
+        with open(score_file, 'r')as f:
+            data = f.readlines()
+        for line in data:
+            line = line[1:-2]
+            score = np.array([float(l) for l in line.split()])
+            score_label.append(score)
+        return score_label
+
+    label_file = model_name + '.label'
+    if os.path.isfile(label_file):
+        label = load_score_file(label_file)
+
+    align_file = model_name + '.align'
+    if os.path.isfile(align_file):
+        align = load_score_file(align_file)
+
+    return label, align
 
 
 def load_label_corpus_file(src_file_name, trg_file_name, separator='|||'):
@@ -110,7 +131,10 @@ def split_valid_data(data, valid=5, debug=False):
     data_sub_lit = [[] for _ in range(valid)]
 
     for d in data:
-        sent_num = d['sent_num'] if d['sent_num'] <= 7 else 7
+        if type(d) == dict:
+            sent_num = d['sent_num'] if d['sent_num'] <= 7 else 7
+        else:
+            sent_num = len(d) if len(d) <= 7 else 7
         class_data[sent_num].append(d)
 
     for k, v in class_data.items():
