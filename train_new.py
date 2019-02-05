@@ -126,9 +126,7 @@ def main():
         _, dev_data, test_data = dataset_new.separate_train_dev_test(test_sub_lit, ite)
         dev_iter = dataset_new.Iterator(dev_data, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
         test_iter = dataset_new.Iterator(test_data, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
-        id_lit = []
-        for t in test_data:
-            id_lit.append(t['id'])
+        id_lit = [t['id'] for t in test_data]
         dev_test_iter_lit.append([dev_iter, test_iter, dev_data, test_data, id_lit])
 
     """MODEL"""

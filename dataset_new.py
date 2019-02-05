@@ -358,6 +358,7 @@ class MixIterator:
 
     def generate(self):
         batches = self.batches
+        random.seed(0)
         if self.shuffle:
             batches = random.sample(batches, len(batches))
 

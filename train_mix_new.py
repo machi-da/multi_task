@@ -211,7 +211,7 @@ def main():
             rate, count, tf_lit, macro, micro = evaluater.eval_param(labels, alignments, test_data, init, mix)
             test_macro_score = round(macro, 3)
             test_micro_score = round(micro, 3)
-            logger.info('V{} ## E{} ## loss: {}, dev: {}, param: {}, macro: {}, micro: {}'.format(ite, epoch, train_loss, dev_score, param, test_macro_score, test_micro_score))
+            logger.info('V{} ## E{} ## loss: {}, dev: {}, param: {}, micro: {}, macro: {}'.format(ite, epoch, train_loss, dev_score, param, test_micro_score, test_macro_score))
 
             epoch_info[epoch] = {
                 'id': test_data_id,
@@ -232,7 +232,7 @@ def main():
         """MODEL SAVE"""
         best_epoch = max(epoch_info, key=(lambda x: epoch_info[x]['dev_score']))
         cross_valid_result.append(epoch_info[best_epoch])
-        logger.info('V{} ## best_epoch: {}, dev: {}, macro: {}, micro: {}'.format(ite, best_epoch, epoch_info[best_epoch]['dev_score'], epoch_info[best_epoch]['macro'], epoch_info[best_epoch]['micro']))
+        logger.info('V{} ## best_epoch: {}, dev: {}, micro: {}, macro: {}'.format(ite, best_epoch, epoch_info[best_epoch]['dev_score'], epoch_info[best_epoch]['micro'], epoch_info[best_epoch]['macro']))
         shutil.copyfile(model_valid_dir + 'model_epoch_{}.npz'.format(best_epoch), model_valid_dir + 'best_model.npz')
 
         logger.info('')
