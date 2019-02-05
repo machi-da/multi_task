@@ -83,7 +83,6 @@ def main():
     """LOGGER"""
     log_file = model_dir + 'log.txt'
     logger = dataset_new.prepare_logger(log_file)
-
     logger.info(args)  # 引数を記録
     logger.info('[Training start] logging to {}'.format(log_file))
 
@@ -136,7 +135,6 @@ def main():
         dev_iter = dataset_new.Iterator(dev_data, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
         test_iter = dataset_new.Iterator(test_data, src_vocab, trg_vocab, batch_size, gpu_id, sort=False, shuffle=False)
 
-        mix_train_iter = dataset_new.MixIterator(qa_iter, train_iter, shuffle=shuffle, type=sample_type, multiple=multiple)
         if sample_type == 'over':
             qa_size = len(qa_train_data)
             train_size = len(train_data) * multiple
@@ -160,6 +158,8 @@ def main():
         epoch_info = {}
         for epoch in range(1, n_epoch + 1):
             train_loss = 0
+            seed = ite * 10 + epoch
+            mix_train_iter = dataset_new.MixIterator(qa_iter, train_iter, seed, shuffle=shuffle, type=sample_type, multiple=multiple)
             for i, batch in enumerate(mix_train_iter.generate(), start=1):
                 try:
                     # loss = optimizer.target(*batch)
@@ -211,8 +211,7 @@ def main():
             rate, count, tf_lit, macro, micro = evaluater.eval_param(labels, alignments, test_data, init, mix)
             test_macro_score = round(macro, 3)
             test_micro_score = round(micro, 3)
-            logger.info(
-                'V{} ## E{} ## loss: {}, dev: {}, param: {}, macro: {}, micro: {}'.format(ite, epoch, train_loss, dev_score, param, test_macro_score, test_micro_score))
+            logger.info('V{} ## E{} ## loss: {}, dev: {}, param: {}, macro: {}, micro: {}'.format(ite, epoch, train_loss, dev_score, param, test_macro_score, test_micro_score))
 
             epoch_info[epoch] = {
                 'id': test_data_id,

@@ -334,7 +334,7 @@ class Iterator:
 
 
 class MixIterator:
-    def __init__(self, iterator1, iterator2, shuffle=True, type='over', multiple=1):
+    def __init__(self, iterator1, iterator2, seed, shuffle=True, type='over', multiple=1):
         # iterator1を大きいデータサイズのiteratorに指定する
         self.batches = []
 
@@ -346,7 +346,7 @@ class MixIterator:
                     self.batches.append([batch, True])
 
         elif type == 'under':
-            random.seed(0)
+            random.seed(seed)
             ite = random.sample(iterator1.batches, iterator2.size * multiple)
             for batch in ite:
                 self.batches.append([batch, False])

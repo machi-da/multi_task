@@ -82,7 +82,6 @@ def main():
     """LOGGER"""
     log_file = model_save_dir + 'log.txt'
     logger = dataset_new.prepare_logger(log_file)
-
     logger.info(args)  # 引数を記録
     logger.info('[Training start] logging to {}'.format(log_file))
 
@@ -194,7 +193,6 @@ def main():
     accuracy_dic = {}
     for epoch in range(1, n_epoch + 1):
         train_loss = 0
-
         for i, batch in enumerate(train_iter.generate(), start=1):
             try:
                 loss = optimizer.target(*batch)
