@@ -172,9 +172,7 @@ def main():
             os.mkdir(model_valid_dir)
 
         train_data, dev_data, test_data = dataset_new.separate_train_dev_test(test_data_sub_lit, ite)
-        test_data_id = []
-        for t in test_data:
-            test_data_id.append(t['id'])
+        test_data_id = [t['id'] for t in test_data]
 
         train_iter = dataset_new.Iterator(train_data, src_vocab, trg_vocab, batch_size, gpu_id, sort=True)
         # train_iter = dataset_new.Iterator(train_data, src_vocab, trg_vocab, batch_size, gpu_id, sort=True)
@@ -265,19 +263,15 @@ def main():
         """MODEL SAVE"""
         best_epoch = max(epoch_info, key=(lambda x: epoch_info[x]['dev_score']))
         cross_valid_result.append(epoch_info[best_epoch])
-        logger.info('V{} ## best_epoch: {}, dev: {}, macro: {}, micro: {}'.format(ite, best_epoch, epoch_info[best_epoch]['dev_score'], epoch_info[best_epoch]['macro'],epoch_info[best_epoch]['micro']))
+        logger.info('V{} ## best_epoch: {}, dev: {}, micro: {}, macro: {}'.format(ite, best_epoch, epoch_info[best_epoch]['dev_score'], epoch_info[best_epoch]['micro'], epoch_info[best_epoch]['macro']))
         shutil.copyfile(model_valid_dir + 'model_epoch_{}.npz'.format(best_epoch), model_valid_dir + 'best_model.npz')
 
         logger.info('')
 
-    ave_dev_score = 0
-    ave_macro_score = 0
-    ave_micro_score = 0
+    ave_dev_score, ave_macro_score, ave_micro_score = 0, 0, 0
     ave_test_score = [0 for _ in range(len(cross_valid_result[0]['rate']))]
-    id_total = []
-    label_total = []
-    align_total = []
-    tf_total = []
+    id_total, label_total, align_total, tf_total = [], [], [], []
+
     for v, r in enumerate(cross_valid_result, start=1):
         ave_dev_score += r['dev_score']
         ave_macro_score += r['macro']
@@ -297,15 +291,9 @@ def main():
     logger.info('dev: {}, micro: {}, macro: {} {}'.format(ave_dev_score, ave_micro_score, dataset_new.float_to_str(ave_test_score), ave_macro_score))
 
     label, align, tf = dataset_new.sort_multi_list(id_total, label_total, align_total, tf_total)
-
-    if label:
-        with open(model_save_dir + 'label.txt', 'w')as f:
-            [f.write('{}\n'.format(l)) for l in label]
-    if align:
-        with open(model_save_dir + 'align.txt', 'w')as f:
-            [f.write('{}\n'.format(a)) for a in align]
-    with open(model_save_dir + 'tf.txt', 'w')as f:
-        [f.write('{}\n'.format(l)) for l in tf]
+    dataset_new.save_list(model_save_dir + 'label.txt', label)
+    dataset_new.save_list(model_save_dir + 'align.txt', align)
+    dataset_new.save_list(model_save_dir + 'tf.txt', tf)
 
 
 if __name__ == '__main__':

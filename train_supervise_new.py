@@ -96,9 +96,7 @@ def main():
             os.mkdir(model_valid_dir)
 
         train_data, dev_data, test_data = dataset_new.separate_train_dev_test(data_sub_lit, ite)
-        test_data_id = []
-        for t in test_data:
-            test_data_id.append(t['id'])
+        test_data_id = [t['id'] for t in test_data]
 
         """VOCABULARY"""
         src_vocab, trg_vocab, sos, eos = dataset_new.prepare_vocab(model_valid_dir, train_data, vocab_size, gpu_id)
