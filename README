@@ -45,14 +45,53 @@ baseline/
 
 crowd/
 評価用データ作成方法(数字は実行順)
-1 rancers_new.py
+0 qa_pair.py
+    文数ごとに分かれたテキストファイルを作成する．
+    python qa_pair.py [output_dir] --nolimit
+    出力 que_best.txt.s1000w1000 ans_best.txt.s1000w1000
+1 pickup_zip.py
+    ファイルを読み込んで文数ごとのファイルへ分けて保存する
+    python pickup_zip.py que_best.txt.s1000w1000 ans_best.txt.s1000w1000 [output_dir]
+    出力 q*.txt a*.txt
+2 rancers_new.py
     ランサーズ用のチェックボックスhtmlファイル，質問事例htmlファイル作成
-2 syukei.py
+3 syukei.py
     ランサーズのcsvファイルを読み込んで 文番号,重要文番号 になったcsvファイルを出力
-3 csv_merge.py
+4 csv_merge.py
     csv.resファイルと問題文をマージして評価用データを作成
 
 (注意)コード中に直接データへのパスが書かれているものはパスの場所が違う場合あり．
+
+make_data/
+質問-回答データ作成方法(数字は実行順)
+1 qa_pair.py
+    指定文数・単語数のデータにフィルタリング
+    python qa_pair.py [output_dir]
+    出力 que_best.txt.s{}w{} ans_best.txt.s{}w{}
+2 ishigaki_preprocessing.py
+    queファイルを石垣さんモデルに合わせたファイルを出力
+    先頭の数字は文数を表す
+    python ishigaki_preprocessing.py que_best.txt.s{}w{}
+    出力 que_best.txt.s{}w{}.dist
+3 ishigaki_distant/scoring.rbでスコアファイルを作成する
+    ruby scoring.rb > que_best.txt.s{}w{}.dist.scoring
+4 distant_reg.py
+    dist scoringファイルの結果をマージする
+    python distant_reg.py que_best.txt.s{}w{} [ue_best.txt.s{}w{}.dist.scoring ans_best.txt.s{}w{}
+    出力 que_best.txt.s{}w{}.label ans_best.txt.s{}w{}.label
+5 float_to_int.py
+    実数値スコアを01スコアに変換する
+    python float_to_int.py que_best.txt.s{}w{}.label
+    出力 que_best.txt.s{}w{}.label.int
+6 random_sample.py
+    指定したサイズの訓練データを作成する
+    python random_sample.py que_best.txt.s{}w{}.label.int que_best.txt.s{}w{}.label
+    出力 que_best.txt.s{}w{}.label.int.sample.train que_best.txt.s{}w{}.label.int.sample.valid
+    ans_best.txt.s{}w{}.label.sample.train ans_best.txt.s{}w{}.label.sample.valid
+
+
+old/
+言語処理学会での論文ではこちらを使っていた．
 
 
 ・実行方法
