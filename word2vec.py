@@ -6,7 +6,7 @@ from gensim.models import KeyedVectors, word2vec
 from tqdm import tqdm
 
 """
-東北大学乾研の学習済みword2vecモデルを使用
+東北大学乾研の学習済みword2vecモデルはここ
 http://www.cl.ecei.tohoku.ac.jp/~m-suzuki/jawiki_vector/
 """
 

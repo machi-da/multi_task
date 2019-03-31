@@ -3,102 +3,11 @@ import pickle
 import os
 import random
 import numpy as np
-import sentencepiece as spm
 import logging
 from logging import getLogger
-from collections import Counter
+from collections import Counter, defaultdict
 
 import convert
-
-
-def load(file_name):
-    text = []
-    with open(file_name)as f:
-        data = f.readlines()
-    for d in data:
-        text.append(d.strip().split(' '))
-    return text
-
-
-def load_with_label_binary(file_name):
-    label_lit = []
-    text = []
-
-    with open(file_name, 'r')as f:
-        data = f.readlines()
-    for d in data:
-        label, sentences = d.strip().split('\t')
-        l_index = [int(l)-1 for l in label.split(',')]
-        label = np.array([1 if i in l_index else 0 for i in range(len(sentences))], dtype=np.int32)
-        label_lit.append(label)
-
-        sentences = sentences.split('|||')
-        t = []
-        for sentence in sentences:
-            t.append(sentence.split(' '))
-        text.append(t)
-    return label_lit, text
-
-
-def load_with_label_reg(file_name):
-    label_lit = []
-    text = []
-    with open(file_name, 'r')as f:
-        data = f.readlines()
-    for d in data:
-        t = []
-        label, sentences = d.strip().split('\t')
-        sentences = sentences.split('|||')
-        label = np.array([float(l) for l in label.split(',')], dtype=np.float32)
-        label_lit.append(label)
-
-        for sentence in sentences:
-            t.append(sentence.split(' '))
-        text.append(t)
-    return label_lit, text
-
-
-def load_binary_score_file(file_name, separator='|||'):
-    label_lit = []
-    binary_label_lit = []
-    text = []
-    index_lit = []
-
-    with open(file_name, 'r')as f:
-        data = f.readlines()
-    for index, d in enumerate(data, start=1):
-        label, sentences = d.strip().split('\t')
-        sentences = sentences.split(separator)
-
-        label = [int(l) - 1 for l in label.split(',')]
-        label_lit.append(label)
-        binary = np.array([1 if i in label else 0 for i in range(len(sentences))], dtype=np.int32)
-        binary_label_lit.append(binary)
-
-        t = []
-        for sentence in sentences:
-            t.append(sentence.split(' '))
-        text.append(t)
-        index_lit.append(index)
-
-    return label_lit, binary_label_lit, text, index_lit
-
-
-def load_score_file(score_file):
-    score_label = []
-    with open(score_file, 'r')as f:
-        data = f.readlines()
-    for line in data:
-        line = line[1:-2]
-        score = np.array([float(l) for l in line.split()])
-        score_label.append(score)
-    return score_label
-
-
-def data_size(file_name):
-    with open(file_name, 'r')as f:
-        size = sum([1 for _ in f.readlines()])
-    return size
 
 
 def load_pickle(file_name):
@@ -113,58 +22,176 @@ def save_pickle(file_name, data):
     return
 
 
-def save_output(save_dir, epoch, label_data, align_data, hypo_data, s_result_list):
-    if label_data:
+def save_output(save_dir, epoch_info):
+    epoch = epoch_info['epoch']
+    remove_lit = ['id', 'label', 'align', 'hypo', 'tf']
+
+    if epoch_info['label']:
         with open(save_dir + 'model_epoch_{}.label'.format(epoch), 'w')as f:
-            [f.write('{}\n'.format(l)) for l in label_data]
-    if align_data:
+            [f.write('{}\n'.format(l)) for l in epoch_info['label']]
+    if epoch_info['align']:
         with open(save_dir + 'model_epoch_{}.align'.format(epoch), 'w')as f:
-            [f.write('{}\n'.format(a)) for a in align_data]
-    if hypo_data:
+            [f.write('{}\n'.format(a)) for a in epoch_info['align']]
+    if epoch_info['hypo']:
         with open(save_dir + 'model_epoch_{}.hypo'.format(epoch), 'w')as f:
-            [f.write('{}\n'.format(h)) for h in hypo_data]
-    with open(save_dir + 'model_epoch_{}.s_res.txt'.format(epoch), 'w')as f:
-        [f.write('{}\n'.format(l[1])) for l in sorted(s_result_list, key=lambda x: x[0])]
+            [f.write('{}\n'.format(h)) for h in epoch_info['hypo']]
+    with open(save_dir + 'model_epoch_{}.tf.txt'.format(epoch), 'w')as f:
+        [f.write('{}\n'.format(l)) for l in epoch_info['tf']]
+    with open(save_dir + 'model_epoch_{}.score'.format(epoch), 'w')as f:
+        for k, v in sorted(epoch_info.items()):
+            if k in remove_lit:
+                continue
+            f.write('{}: {}\n'.format(k, v))
     return
 
 
+def save_list(file_name, lit):
+    if lit:
+        with open(file_name, 'w')as f:
+            [f.write('{}\n'.format(l)) for l in lit]
+    return
+
+
+def sort_multi_list(id, label, align, tf):
+    if label:
+        if align:
+            c = list(zip(id, label, align, tf))
+            c.sort()
+            id, label, align, tf = zip(*c)
+            return label, align, tf
+        else:
+            c = list(zip(id, label, tf))
+            c.sort()
+            id, label, tf = zip(*c)
+            return label, [], tf
+    else:
+        c = list(zip(id, align, tf))
+        c.sort()
+        id, align, tf = zip(*c)
+        return [], align, tf
+
+
+def load_score_file(model_name, file_name=''):
+    def load_score_file(score_file):
+        score_label = []
+        with open(score_file, 'r')as f:
+            data = f.readlines()
+        for line in data:
+            line = line[1:-2]
+            score = np.array([float(l) for l in line.split()])
+            score_label.append(score)
+        return score_label
+
+    if file_name == '':
+        label = []
+        align = []
+
+        label_file = model_name + '.label'
+        if os.path.isfile(label_file):
+            label = load_score_file(label_file)
+
+        align_file = model_name + '.align'
+        if os.path.isfile(align_file):
+            align = load_score_file(align_file)
+
+        return label, align
+
+    else:
+        return load_score_file(file_name), []
+
+
+def load_label_corpus_file(src_file_name, trg_file_name, separator='|||'):
+    data_lit = []
+
+    with open(src_file_name, 'r')as f:
+        s_data = f.readlines()
+    with open(trg_file_name, 'r')as f:
+        t_data = f.readlines()
+    for index, (src, trg) in enumerate(zip(s_data, t_data), start=1):
+        dic = {}
+        label, sentences = src.strip().split('\t')
+        sentences = sentences.split(separator)
+
+        dic['id'] = index
+        dic['sent_num'] = len(sentences)
+        dic['label'] = int(label) - 1
+        binary_label_lit = np.array([1 if i == dic['label'] else 0 for i in range(len(sentences))], dtype=np.int32)
+        dic['b_label_lit'] = binary_label_lit
+
+        text = []
+        for sentence in sentences:
+            text.append(sentence.split(' '))
+        dic['text'] = text
+
+        dic['ans'] = trg.strip().split(' ')
+
+        data_lit.append(dic)
+
+    return data_lit
+
+
+def split_valid_data(data, valid=5, debug=False):
+    class_data = defaultdict(list)
+    data_sub_lit = [[] for _ in range(valid)]
+
+    for d in data:
+        if type(d) == dict:
+            sent_num = d['sent_num'] if d['sent_num'] <= 7 else 7
+        else:
+            sent_num = len(d) if len(d) <= 7 else 7
+        class_data[sent_num].append(d)
+
+    for k, v in class_data.items():
+        group_size = int(len(v) / valid)
+        start = 0
+        end = group_size
+        for i in range(valid):
+            data_sub_lit[i].extend(v[start:end])
+
+            start = end
+            end += group_size
+        else:
+            data_sub_lit[i].extend(v[start:])
+
+    if debug:
+        print('sub_list:', len(data_sub_lit))
+        for i, d in enumerate(data_sub_lit, start=1):
+            count = []
+            for dd in d:
+                count.append(dd['sent_num'])
+            print('{}: {}'.format(i, len(d)))
+            print(Counter(count))
+
+    return data_sub_lit
+
+
 def float_to_str(lit):
-    return [str(l) for l in lit]
+    return ' '.join([str(round(l, 3)) for l in lit])
 
 
-def prepare_vocab(model_dir, vocab_type, src_file, trg_file, vocab_size, gpu_id):
-    if vocab_type == 'normal':
-        src_vocab = VocabNormal()
-        trg_vocab = VocabNormal()
-        if os.path.isfile(model_dir + 'src_vocab.normal.pkl') and os.path.isfile(model_dir + 'trg_vocab.normal.pkl'):
-            src_vocab.load(model_dir + 'src_vocab.normal.pkl')
-            trg_vocab.load(model_dir + 'trg_vocab.normal.pkl')
+def separate_train_dev_test(data, index):
+    train = []
+    dev = []
+    test = []
+
+    valid_num = len(data)
+
+    dev_index = index + valid_num - 2
+    if dev_index > valid_num:
+        dev_index -= valid_num
+
+    test_index = index - 1
+    if index == 1:
+        test_index = valid_num
+
+    for i, d in enumerate(data, start=1):
+        if i == dev_index:
+            dev.extend(d)
+        elif i == test_index:
+            test.extend(d)
         else:
-            init_vocab = {'<pad>': 0, '<unk>': 1, '<s>': 2, '</s>': 3}
-            src_vocab.build(src_file, True,  init_vocab, vocab_size)
-            trg_vocab.build(trg_file, False, init_vocab, vocab_size)
-            save_pickle(model_dir + 'src_vocab.normal.pkl', src_vocab.vocab)
-            save_pickle(model_dir + 'trg_vocab.normal.pkl', trg_vocab.vocab)
-        src_vocab.set_reverse_vocab()
-        trg_vocab.set_reverse_vocab()
-
-        sos = convert.convert_list(np.array([src_vocab.vocab['<s>']], dtype=np.int32), gpu_id)
-        eos = convert.convert_list(np.array([src_vocab.vocab['</s>']], dtype=np.int32), gpu_id)
-
-    elif vocab_type == 'subword':
-        src_vocab = VocabSubword()
-        trg_vocab = VocabSubword()
-        if os.path.isfile(model_dir + 'src_vocab.sub.model') and os.path.isfile(model_dir + 'trg_vocab.sub.model'):
-            src_vocab.load(model_dir + 'src_vocab.sub.model')
-            trg_vocab.load(model_dir + 'trg_vocab.sub.model')
-        else:
-            src_vocab.build(src_file + '.sub', model_dir + 'src_vocab.sub', vocab_size)
-            trg_vocab.build(trg_file + '.sub', model_dir + 'trg_vocab.sub', vocab_size)
-
-        sos = convert.convert_list(np.array([src_vocab.vocab.PieceToId('<s>')], dtype=np.int32), gpu_id)
-        eos = convert.convert_list(np.array([src_vocab.vocab.PieceToId('</s>')], dtype=np.int32), gpu_id)
-
-    return src_vocab, trg_vocab, sos, eos
+            train.extend(d)
+    return train, dev, test
 
 
 def prepare_logger(log_file):
@@ -184,40 +211,52 @@ def prepare_logger(log_file):
     return logger
 
 
+def prepare_vocab(model_dir, data, vocab_size, gpu_id):
+    src_vocab = VocabNormal()
+    trg_vocab = VocabNormal()
+    if os.path.isfile(model_dir + 'src_vocab.normal.pkl') and os.path.isfile(model_dir + 'trg_vocab.normal.pkl'):
+        src_vocab.load(model_dir + 'src_vocab.normal.pkl')
+        trg_vocab.load(model_dir + 'trg_vocab.normal.pkl')
+    else:
+        init_vocab = {'<pad>': 0, '<unk>': 1, '<s>': 2, '</s>': 3}
+        src_vocab.build(data, init_vocab, vocab_size, type='src')
+        trg_vocab.build(data, init_vocab, vocab_size, type='trg')
+        save_pickle(model_dir + 'src_vocab.normal.pkl', src_vocab.vocab)
+        save_pickle(model_dir + 'trg_vocab.normal.pkl', trg_vocab.vocab)
+    src_vocab.set_reverse_vocab()
+    trg_vocab.set_reverse_vocab()
+
+    sos = convert.convert_list(np.array([src_vocab.vocab['<s>']], dtype=np.int32), gpu_id)
+    eos = convert.convert_list(np.array([src_vocab.vocab['</s>']], dtype=np.int32), gpu_id)
+
+    return src_vocab, trg_vocab, sos, eos
+
+
 class VocabNormal:
     def __init__(self):
         self.vocab = None
         self.reverse_vocab = None
 
-    def build(self, obj, with_label, initial_vocab, vocab_size, freq=0):
-        vocab = copy.copy(initial_vocab)
+    def build(self, data, init_vocab, vocab_size, type):
+        vocab = copy.copy(init_vocab)
         word_count = Counter()
         words = []
 
-        if type(obj) is str:
-            if with_label:
-                _, documents = load_with_label_reg(obj)
-
-                for i, doc in enumerate(documents):
-                    for sentence in doc:
-                        words.extend(sentence)
-                    # 10000文書ごとにCounterへ渡す
-                    if i % 10000 == 0:
-                        word_count += Counter(words)
-                        words = []
-                else:
-                    word_count += Counter(words)
-
-            else:
-                documents = load(obj)
-                for doc in documents:
-                    words.extend(doc)
-                word_count = Counter(words)
-
-        elif type(obj) is list:
-            for i, doc in enumerate(obj):
-                for sentence in doc:
+        if type == 'src':
+            for i, d in enumerate(data, start=1):
+                for sentence in d['text']:
                     words.extend(sentence)
+                # 10000文書ごとにCounterへ渡す
+                if i % 10000 == 0:
+                    word_count += Counter(words)
+                    words = []
+            else:
+                word_count += Counter(words)
+
+        elif type == 'trg':
+            for i, d in enumerate(data, start=1):
+                words.extend(d['ans'])
+                # 10000文書ごとにCounterへ渡す
                 if i % 10000 == 0:
                     word_count += Counter(words)
                     words = []
@@ -226,8 +265,6 @@ class VocabNormal:
 
         for w, c in word_count.most_common():
             if len(vocab) >= vocab_size:
-                break
-            if c <= freq:
                 break
             if w not in vocab:
                 vocab[w] = len(vocab)
@@ -260,75 +297,34 @@ class VocabNormal:
         return sentence
 
 
-class VocabSubword:
-    def __init__(self):
-        self.vocab = None
-
-    def build(self, file_name, model_name, vocab_size):
-        self.vocab = self._build_vocab(file_name, model_name, vocab_size)
-
-    def _build_vocab(self, text_file, model_name, vocab_size):
-        args = '''
-                --pad_id=0 
-                --unk_id=1 
-                --bos_id=2
-                --eos_id=3
-                --input={} 
-                --model_prefix={} 
-                --vocab_size={} 
-                --hard_vocab_limit=false''' \
-            .format(text_file, model_name, vocab_size)
-        spm.SentencePieceTrainer.Train(args)
-        sp = spm.SentencePieceProcessor()
-        sp.Load(model_name + '.model')
-        return sp
-
-    def load(self, vocab_file):
-        sp = spm.SentencePieceProcessor()
-        sp.Load(vocab_file)
-        self.vocab = sp
-
-    def word2id(self, sentence, sos=False, eos=False):
-        sp = self.vocab
-        sentence_id = sp.EncodeAsIds(' '.join(sentence))
-
-        if sos:
-            sentence_id.insert(0, sp.PieceToId('<s>'))
-        if eos:
-            sentence_id.append(sp.PieceToId('</s>'))
-        return np.array(sentence_id, dtype=np.int32)
-
-    def id2word(self, sentence_id):
-        return self.vocab.DecodeIds(sentence_id.tolist())
-
-
 class Iterator:
-    def __init__(self, src_text, src_label, trg_text, src_vocab, trg_vocab, batch_size, gpu_id, sort=True, shuffle=True):
+    def __init__(self, data, src_vocab, trg_vocab, batch_size, gpu_id, sort=True, shuffle=True):
         self.src_vocab = src_vocab
         self.trg_vocab = trg_vocab
-        self.size = len(src_text)
+        self.size = len(data)
 
         self.sort = sort
         self.shuffle = shuffle
 
-        self.batches = self._prepare_minibatch(src_text, src_label, trg_text, batch_size, gpu_id)
+        self.batches = self._prepare_minibatch(data, batch_size, gpu_id)
 
-    def _convert(self, src, trg, label):
-        src_id = [self.src_vocab.word2id(s) for s in src]
-        trg_sos = self.trg_vocab.word2id(trg, sos=True)
-        trg_eos = self.trg_vocab.word2id(trg, eos=True)
+    def _convert(self, data):
+        src_id = [self.src_vocab.word2id(t) for t in data['text']]
+        trg_sos = self.trg_vocab.word2id(data['ans'], sos=True)
+        trg_eos = self.trg_vocab.word2id(data['ans'], eos=True)
+        label = data['b_label_lit']
         return src_id, trg_sos, trg_eos, label
 
-    def _prepare_minibatch(self, src, label, trg, batch_size, gpu_id):
-        data = []
-        for s, l, t in zip(src, label, trg):
-            data.append(self._convert(s, t, l))
+    def _prepare_minibatch(self, data, batch_size, gpu_id):
+        batch_data = []
+        for d in data:
+            batch_data.append(self._convert(d))
 
         if self.sort:
-            data = sorted(data, key=lambda x: len(x[0]), reverse=True)
-        batches = [convert.convert(data[b * batch_size: (b + 1) * batch_size], gpu_id) for b in range(len(data) // batch_size)]
-        if len(data) % batch_size != 0:
-            batches.append(convert.convert(data[-(len(data) % batch_size):], gpu_id))
+            batch_data = sorted(batch_data, key=lambda x: len(x[0]), reverse=True)
+        batches = [convert.convert(batch_data[b * batch_size: (b + 1) * batch_size], gpu_id) for b in range(len(batch_data) // batch_size)]
+        if len(batch_data) % batch_size != 0:
+            batches.append(convert.convert(batch_data[-(len(batch_data) % batch_size):], gpu_id))
 
         return batches
 
@@ -342,7 +338,7 @@ class Iterator:
 
 
 class MixIterator:
-    def __init__(self, iterator1, iterator2, shuffle=True, type='over', multiple=1):
+    def __init__(self, iterator1, iterator2, seed, shuffle=True, type='over', multiple=1):
         # iterator1を大きいデータサイズのiteratorに指定する
         self.batches = []
 
@@ -354,7 +350,7 @@ class MixIterator:
                     self.batches.append([batch, True])
 
         elif type == 'under':
-            random.seed(0)
+            random.seed(seed)
             ite = random.sample(iterator1.batches, iterator2.size * multiple)
             for batch in ite:
                 self.batches.append([batch, False])
@@ -366,6 +362,7 @@ class MixIterator:
 
     def generate(self):
         batches = self.batches
+        random.seed(0)
         if self.shuffle:
             batches = random.sample(batches, len(batches))
 

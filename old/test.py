@@ -6,11 +6,9 @@ import glob
 import logging
 import numpy as np
 from logging import getLogger
-import dataset
 import convert
 
-import gridsearch
-import model_reg
+from old import model_reg, dataset, gridsearch
 
 np.set_printoptions(precision=3)
 os.environ["CHAINER_TYPE_CHECK"] = "0"

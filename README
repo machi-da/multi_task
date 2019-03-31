@@ -1,0 +1,72 @@
+質問-回答対を利用した半教師有り抽出型質問要約
+論文url(言語処理学会): http://www.anlp.jp/proceedings/annual_meeting/2019/pdf_dir/F6-1.pdf
+
+・コードの概要
+- adjust_list.py
+    出力ファイルのスコアが2行にまたがることがあるので全てを1行に直す(*.label, *.alignファイルを入力する)
+- check_doc_statistics.py
+    入力されたdocumentファイルの文数，単語数をカウントする
+- config.ini
+    実験でのハイパーパラメータと訓練データのパスが記述されている
+- convert.py
+    gpuに対応したリストに変換する
+- dataset.py
+    データを扱う(データのセーブ，ロード，ボキャブラリ作成，イテレータ作成)
+- evaluate.py
+    正解率の計算を行う
+- merge.py
+    separate learningモデルのスコアを計算するコード
+- model_define.py
+    提案モデルの実装部分
+- multi_task.sh
+    multi-taskモデルでlambda(コード中では変数名coefficient)の全パターンを自動化するためのシェルスクリプト(使用頻度低)
+- sightest.py
+    符号検定を行うコード(tfファイルを入力する)
+- train.py
+    L'_large設定での学習コード
+- train_mix.py
+    L_small + U_large設定 multi-taskでの学習コード
+- train_pseudo.py
+    L_small + L'_large設定での学習コード
+- train_supervise.py
+    L_small設定での学習コード
+- word2vec.py
+    w2vの学習とモデルの保存，embeddin layerの初期状態を作成する
+
+baseline/
+- lead.py
+    リード文(1文目)でスコアを計算
+- lex.py
+    lexrankでスコアを計算
+- tfidf.py
+    tf-idfでスコアを計算
+- wmd.py
+    word mover's distanceでスコアを計算
+
+crowd/
+評価用データ作成方法(数字は実行順)
+1 rancers_new.py
+    ランサーズ用のチェックボックスhtmlファイル，質問事例htmlファイル作成
+2 syukei.py
+    ランサーズのcsvファイルを読み込んで 文番号,重要文番号 になったcsvファイルを出力
+3 csv_merge.py
+    csv.resファイルと問題文をマージして評価用データを作成
+
+(注意)コード中に直接データへのパスが書かれているものはパスの場所が違う場合あり．
+
+
+・実行方法
+基本構文
+python train(|_mix|_pre|_pseudo|_supervise).py config.ini -b [batch_size] -e [epoch_num] -pe [pretrain_epoch_num] -g [gpu_id] -m [model_type] -p -d [data_path] -l [load_model]
+ex.
+python train.py config.ini -b 50 -g 0 -m multi -p
+
+引数の説明[実験時に指定していた値]
+b: バッチサイズ[50]
+e: エポック数[10]
+pe: pretrain時のエポック数[5 or 10]
+g: gpuのid
+m: モデルのタイプを選択する multi, label(論文ではscore_imp), encdec(論文ではscore_ans), pretrain
+p: embedding layerに知恵袋データで学習した初期値を設定するかどうか
+d: データのパスがどこか(ローカルとサーバでデータのパスが異なっていたため)
+l: 指定したモデルを読み込んでから学習を始めるオプション(学習済みモデルを読み込んで実験したいときに使う)

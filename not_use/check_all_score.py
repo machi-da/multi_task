@@ -1,10 +1,5 @@
 import argparse
-import configparser
-import evaluate
-import gridsearch
-
-import evaluate
-import dataset
+from old import evaluate, gridsearch
 
 
 def parse_args():

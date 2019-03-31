@@ -1,267 +1,173 @@
-import argparse
-import configparser
-import re
-import os
-import glob
 import copy
 import numpy as np
 
-import dataset
-
 
 class Evaluate:
-    def save_single_result(self, file_name, init, mix):
-        print('save single result: {}'.format(file_name))
-        key = param_to_key(init, mix)
-        with open(file_name, 'w')as f:
-            for i, r in zip(self.single_index, self.single_result_dic[key].values()):
-                f.write('{}:\t{}\n'.format(i, r))
-        return
+    def __init__(self):
+        self.dic = {2: [0, 0], 3: [0, 0], 4: [0, 0], 5: [0, 0], 6: [0, 0], 7: [0, 0]}
 
-    def label(self, label_list, correct_label_list, correct_index_list, multi_sentence_score=False):
-        label_data = copy.deepcopy(label_list)
-        rank_list = []
-        for label, clabel in zip(label_data, correct_label_list):
-            rank = []
-            for _ in range(len(label)):
-                index = label.argmax()
-                if index in clabel:
-                    rank.append((index, True))
+    def label(self, label_data, test_data):
+        dic = copy.deepcopy(self.dic)
+        tf_lit = []
+        for label, d in zip(label_data, test_data):
+            sent_num = d['sent_num'] if d['sent_num'] <= 7 else 7
+            if label.argmax() == d['label']:
+                dic[sent_num][0] += 1
+                tf_lit.append('T')
+            else:
+                tf_lit.append('F')
+            dic[sent_num][1] += 1
+
+        rate = [v[0]/v[1] for k, v in dic.items()]
+        count = ['{}/{}'.format(v[0], v[1]) for k, v in dic.items()]
+        correct = sum([v[0] for k, v in dic.items()])
+        total = sum([v[1] for k, v in dic.items()])
+        count.append('{}/{}'.format(correct, total))
+
+        macro = sum(rate) / len(rate)
+        micro = correct / total
+
+        return rate, count, tf_lit, macro, micro
+
+    def label_init(self, label_data, test_data, init_threshold=0.7):
+        dic = copy.deepcopy(self.dic)
+        tf_lit = []
+        for label, d in zip(label_data, test_data):
+            sent_num = d['sent_num'] if d['sent_num'] <= 7 else 7
+            filter_index = list(np.where(label >= init_threshold)[0])
+
+            if len(filter_index) > 0:
+                if filter_index[0] == d['label']:
+                    dic[sent_num][0] += 1
+                    tf_lit.append('T')
                 else:
-                    rank.append((index, False))
-                label[index] = -1000
-            rank_list.append(rank)
+                    tf_lit.append('F')
+                dic[sent_num][1] += 1
 
-        s_rate, s_count, s_result = self.single(rank_list, correct_index_list)
-        m_rate, m_count = [], []
-
-        if multi_sentence_score:
-            m_rate, m_count = self.multiple(rank_list)
-
-        return s_rate, s_count, m_rate, m_count, s_result
-
-    def label_init(self, label_list, correct_label_list, correct_index_list, init_threshold=0.7, multi_sentence_score=False):
-        label_data = copy.deepcopy(label_list)
-        rank_list = []
-        for label, clabel in zip(label_data, correct_label_list):
-            rank = []
-            true_index = list(np.where(label >= init_threshold)[0])
-            for _ in range(len(label)):
-                index = label.argmax()
-
-                # 先頭を優先
-                if len(true_index) > 0:
-                    if index != true_index[0]:
-                        if true_index[0] in clabel:
-                            rank.append((true_index[0], True))
-                        else:
-                            rank.append((true_index[0], False))
-                        label[true_index[0]] = -1000
-                        true_index = true_index[1:]
-                        continue
-
-                if index in clabel:
-                    rank.append((index, True))
+            else:
+                if label.argmax() == d['label']:
+                    dic[sent_num][0] += 1
+                    tf_lit.append('T')
                 else:
-                    rank.append((index, False))
-                label[index] = -1000
-                if index in true_index:
-                    true_index.remove(index)
-            rank_list.append(rank)
+                    tf_lit.append('F')
+                dic[sent_num][1] += 1
 
-        s_rate, s_count, s_result = self.single(rank_list, correct_index_list)
-        m_rate, m_count = [], []
+        rate = [v[0] / v[1] for k, v in dic.items()]
+        count = ['{}/{}'.format(v[0], v[1]) for k, v in dic.items()]
+        correct = sum([v[0] for k, v in dic.items()])
+        total = sum([v[1] for k, v in dic.items()])
+        count.append('{}/{}'.format(correct, total))
 
-        if multi_sentence_score:
-            m_rate, m_count = self.multiple(rank_list)
+        macro = sum(rate) / len(rate)
+        micro = correct / total
 
-        return s_rate, s_count, m_rate, m_count, s_result
+        return rate, count, tf_lit, macro, micro
 
-    def label_mix_align(self, label_list, align_list, correct_label_list, correct_index_list, weight=0.5, multi_sentence_score=False):
-        label_data = copy.deepcopy(label_list)
-        rank_list = []
-        for label, clabel, align in zip(label_data, correct_label_list, align_list):
+    def label_mix_align(self, label_data, align_data, test_data, weight=0.5):
+        dic = copy.deepcopy(self.dic)
+        tf_lit = []
+        for label, align, d in zip(label_data, align_data, test_data):
+            sent_num = d['sent_num'] if d['sent_num'] <= 7 else 7
             label = weight * label + (1 - weight) * align
-            rank = []
-            for _ in range(len(label)):
-                index = label.argmax()
 
-                if index in clabel:
-                    rank.append((index, True))
-                else:
-                    rank.append((index, False))
-                label[index] = -1000
-            rank_list.append(rank)
+            if label.argmax() == d['label']:
+                dic[sent_num][0] += 1
+                tf_lit.append('T')
+            else:
+                tf_lit.append('F')
+            dic[sent_num][1] += 1
 
-        s_rate, s_count, s_result = self.single(rank_list, correct_index_list)
-        m_rate, m_count = [], []
+        rate = [v[0] / v[1] for k, v in dic.items()]
+        count = ['{}/{}'.format(v[0], v[1]) for k, v in dic.items()]
+        correct = sum([v[0] for k, v in dic.items()])
+        total = sum([v[1] for k, v in dic.items()])
+        count.append('{}/{}'.format(correct, total))
 
-        if multi_sentence_score:
-            m_rate, m_count = self.multiple(rank_list)
+        macro = sum(rate) / len(rate)
+        micro = correct / total
 
-        return s_rate, s_count, m_rate, m_count, s_result
+        return rate, count, tf_lit, macro, micro
 
-    def label_mix_aligh_init(self, label_list, align_list, correct_label_list, correct_index_list, init_threshold=0.7, weight=0.5, multi_sentence_score=False):
-        label_data = copy.deepcopy(label_list)
-        rank_list = []
-        for label, clabel, align in zip(label_data, correct_label_list, align_list):
+
+    def label_mix_aligh_init(self, label_data, align_data, test_data, init_threshold=0.7, weight=0.5):
+        dic = copy.deepcopy(self.dic)
+        tf_lit = []
+        for label, align, d in zip(label_data, align_data, test_data):
+            sent_num = d['sent_num'] if d['sent_num'] <= 7 else 7
             label = weight * label + (1 - weight) * align
-            rank = []
-            true_index = list(np.where(label >= init_threshold)[0])
-            for _ in range(len(label)):
-                index = label.argmax()
+            filter_index = list(np.where(label >= init_threshold)[0])
 
-                # 先頭を優先
-                if len(true_index) > 0:
-                    if index != true_index[0]:
-                        if true_index[0] in clabel:
-                            rank.append((true_index[0], True))
-                        else:
-                            rank.append((true_index[0], False))
-                        label[true_index[0]] = -1000
-                        true_index = true_index[1:]
-                        continue
-
-                if index in clabel:
-                    rank.append((index, True))
+            if len(filter_index) > 0:
+                if filter_index[0] == d['label']:
+                    dic[sent_num][0] += 1
+                    tf_lit.append('T')
                 else:
-                    rank.append((index, False))
-                label[index] = -1000
-                if index in true_index:
-                    true_index.remove(index)
-            rank_list.append(rank)
+                    tf_lit.append('F')
+                dic[sent_num][1] += 1
 
-        s_rate, s_count, s_result = self.single(rank_list, correct_index_list)
-        m_rate, m_count = [], []
+            else:
+                if label.argmax() == d['label']:
+                    dic[sent_num][0] += 1
+                    tf_lit.append('T')
+                else:
+                    tf_lit.append('F')
+                dic[sent_num][1] += 1
 
-        if multi_sentence_score:
-            m_rate, m_count = self.multiple(rank_list)
+        rate = [v[0] / v[1] for k, v in dic.items()]
+        count = ['{}/{}'.format(v[0], v[1]) for k, v in dic.items()]
+        correct = sum([v[0] for k, v in dic.items()])
+        total = sum([v[1] for k, v in dic.items()])
+        count.append('{}/{}'.format(correct, total))
 
-        return s_rate, s_count, m_rate, m_count, s_result
+        macro = sum(rate) / len(rate)
+        micro = correct / total
 
-    def single(self, rank_list, correct_index_list):
-        score_dic = {2: [0, 0], 3: [0, 0], 4: [0, 0], 5: [0, 0], 6: [0, 0], 7: [0, 0]}
-        result = []
+        return rate, count, tf_lit, macro, micro
 
-        if correct_index_list:
-            for index, (r, cindex) in enumerate(zip(rank_list, correct_index_list), start=1):
-                sent_num = len(r)
-                # 正解ラベルの数: correct_num
-                count_num = 0
-                for rr in r:
-                    if rr[1]:
-                        count_num += 1
-
-                if count_num == 1 or count_num == 0:
-                    score_dic[sent_num][1] += 1
-                    if r[0][1]:  # 一番スコアの高い文(rの0番目)が正解ラベル判定でTrueかどうか
-                        score_dic[sent_num][0] += 1
-                        result.append([cindex, 'T'])
-                    else:
-                        result.append([cindex, 'F'])
-
-        else:
-            for index, r in enumerate(rank_list, start=1):
-                sent_num = len(r)
-                # 正解ラベルの数: correct_num
-                count_num = 0
-                for rr in r:
-                    if rr[1]:
-                        count_num += 1
-
-                if count_num == 1 or count_num == 0:
-                    score_dic[sent_num][1] += 1
-                    if r[0][1]:  # 一番スコアの高い文(rの0番目)が正解ラベル判定でTrueかどうか
-                        score_dic[sent_num][0] += 1
-
-        # 分母が0の時1に直す
-        for v in score_dic.values():
-            if v[1] == 0:
-                v[1] = 1
-
-        # スコアの集計
-        rate = [v[0] / v[1] for k, v in score_dic.items()]
-        micro_rate = sum([v[0] / v[1] for k, v in score_dic.items()]) / len(rate)
-        rate.append(micro_rate)
-
-        correct_num = sum([v[0] for k, v in score_dic.items()])
-        total_num = sum([v[1] for k, v in score_dic.items()])
-        count = ['{}/{}'.format(v[0], v[1]) for k, v in score_dic.items()]
-        count.append('{}/{}'.format(correct_num, total_num))
-
-        return rate, count, result
-
-    def multiple(self, rank_list):
-        score_dic = {2: [0, 0], 3: [0, 0], 4: [0, 0], 5: [0, 0], 6: [0, 0], 7: [0, 0]}
-        for r in rank_list:
-            sent_num = len(r)
-            count_num = 0
-            for rr in r:
-                if rr[1]:
-                    count_num += 1
-            correct = 0
-            for i in range(count_num):
-                if r[i][1]:
-                    correct += 1
-
-            score_dic[sent_num][0] += correct
-            score_dic[sent_num][1] += count_num
-
-        t_correct, t = sum([v[0] for k, v in score_dic.items()]), sum([v[1] for k, v in score_dic.items()])
-        for v in score_dic.values():
-            if v[1] == 0:
-                v[1] = 1
-        rate = [str(round(v[0] / v[1], 3)) for k, v in score_dic.items()]
-        micro_rate = sum([v[0] / v[1] for k, v in score_dic.items()]) / len(rate)
-        rate.append(str(round(micro_rate, 3)))
-        count = ['{}/{}'.format(v[0], v[1]) for k, v in score_dic.items()]
-        count.append('{}/{}'.format(t_correct, t))
-        return rate, count
-
-    def param_search(self, label_list, align_list, correct_label_list):
+    def param_search(self, label_data, align_data, test_data):
         best_param_dic = {}
 
-        s_rate, _, _, _, _ = self.label(label_list, correct_label_list, [])
+        _, _, _, macro, micro = self.label(label_data, test_data)
         key = 'normal'
-        best_param_dic[key] = s_rate[-1]
+        best_param_dic[key] = {'macro': macro, 'micro': micro}
 
         # range: 1~9
-        for i in range(1, 10):
-            init_threshold = round(i * 0.1, 1)
-            s_rate, _, _, _, _ = self.label_init(label_list, correct_label_list, [], init_threshold)
-            key = 'init {}'.format(init_threshold)
-            best_param_dic[key] = s_rate[-1]
+        # for i in range(1, 10):
+        #     init_threshold = round(i * 0.1, 1)
+        #     _, _, _, macro, micro = self.label_init(label_data, test_data, init_threshold)
+        #     key = 'init {}'.format(init_threshold)
+        #     best_param_dic[key] = {'macro': macro, 'micro': micro}
 
-        if align_list:
+        if align_data:
             for i in range(1, 10):
                 weight = round(i * 0.1, 1)
-                s_rate, _, _, _, _ = self.label_mix_align(label_list, align_list, correct_label_list, [], weight)
+                _, _, _, macro, micro = self.label_mix_align(label_data, align_data, test_data, weight)
                 key = 'mix {}'.format(weight)
-                best_param_dic[key] = s_rate[-1]
+                best_param_dic[key] = {'macro': macro, 'micro': micro}
 
-            for i in range(1, 10):
-                weight = round(i * 0.1, 1)
-                for j in range(1, 10):
-                    init_threshold = round(j * 0.1, 1)
-                    s_rate, _, _, _, _ = self.label_mix_aligh_init(label_list, align_list, correct_label_list, [], init_threshold, weight)
-                    key = 'init {} mix {}'.format(init_threshold, weight)
-                    best_param_dic[key] = s_rate[-1]
+            # for i in range(1, 10):
+            #     weight = round(i * 0.1, 1)
+            #     for j in range(1, 10):
+            #         init_threshold = round(j * 0.1, 1)
+            #         _, _, _, macro, micro = self.label_mix_aligh_init(label_data, align_data, test_data, init_threshold, weight)
+            #         key = 'init {} mix {}'.format(init_threshold, weight)
+            #         best_param_dic[key] = {'macro': macro, 'micro': micro}
 
         return best_param_dic
 
-    def eval_param(self, label_list, align_list, correct_label_list, correct_index_list, init=-1, mix=-1):
+    def eval_param(self, label_data, align_data, test_data, init=-1, mix=-1):
         if init == -1:
             if mix == -1:
-                s_rate, s_count, m_rate, m_count, s_result = self.label(label_list, correct_label_list, correct_index_list)
+                rate, count, tf_lit, macro, micro = self.label(label_data, test_data)
             else:
-                s_rate, s_count, m_rate, m_count, s_result = self.label_mix_align(label_list, align_list, correct_label_list, correct_index_list, mix)
+                rate, count, tf_lit, macro, micro = self.label_mix_align(label_data, align_data, test_data, mix)
         else:
             if mix == -1:
-                s_rate, s_count, m_rate, m_count, s_result = self.label_init(label_list, correct_label_list, correct_index_list, init)
+                rate, count, tf_lit, macro, micro = self.label_init(label_data, test_data, init)
             else:
-                s_rate, s_count, m_rate, m_count, s_result = self.label_mix_aligh_init(label_list, align_list, correct_label_list, correct_index_list, init, mix)
+                rate, count, tf_lit, macro, micro = self.label_mix_aligh_init(label_data, align_data, test_data, init, mix)
 
-        return s_rate, s_count, m_rate, m_count, s_result
+        return rate, count, tf_lit, macro, micro
 
 
 def param_to_key(init, mix):
@@ -289,42 +195,3 @@ def key_to_param(key):
             return -1, float(k[1])
     else:
         return float(k[1]), float(k[3])
-
-
-def load_score_file(model_name):
-    label = []
-    align = []
-
-    label_file = model_name + '.label'
-    if os.path.isfile(label_file):
-        label = dataset.load_score_file(label_file)
-
-    align_file = model_name + '.align'
-    if os.path.isfile(align_file):
-        align = dataset.load_score_file(align_file)
-
-    return label, align
-
-
-def parse_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('model_name')
-    parser.add_argument('--init', '-i', type=float, default=-1)
-    parser.add_argument('--mix', '-m', type=float, default=-1)
-    args = parser.parse_args()
-    return args
-
-
-if __name__ == '__main__':
-    args = parse_args()
-    model_name = args.model_name
-    init = args.init
-    mix = args.mix
-    model_dir = re.search(r'^(.*/)', model_name).group(1)
-
-    label, align, correct_label, correct_index = load_score_file(model_name, model_dir)
-    ev = Evaluate()
-    s_rate, s_count, m_rate, m_count, s_result = ev.eval_param(label, align, correct_label, correct_index, init, mix)
-
-    print('s: {} | {}'.format(' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
-    # print('m: {} | {}'.format(' '.join(x for x in m_rate), ' '.join(x for x in m_count)))

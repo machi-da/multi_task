@@ -1,6 +1,6 @@
 import argparse
 import re
-import evaluate
+from old import evaluate
 from itertools import zip_longest
 import numpy as np
 

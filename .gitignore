@@ -10,3 +10,5 @@ __pycache__/
 etc/
 s_res/
 test_data/
+not_use/
+old/
